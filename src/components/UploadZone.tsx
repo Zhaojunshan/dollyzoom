@@ -72,8 +72,11 @@ export function UploadZone() {
   };
 
   const handleBuy = () => {
-    setPayNote(
-      "Stripe checkout is not connected yet. This button is a Day-0 placeholder — wire Stripe Checkout next.",
+    // Creem Checkout Link — live charges need Creem account verification + custom domain
+    window.open(
+      "https://www.creem.io/payment/prod_w9pGaP1bfoaF20iNiGXKt?theme=dark",
+      "_blank",
+      "noopener,noreferrer",
     );
   };
 
@@ -205,7 +208,7 @@ export function UploadZone() {
                     Buy HD — $1.49
                   </button>
                   <p className="text-center text-[11px] text-muted">
-                    Stripe pending — button is a placeholder, no charge.
+                    Opens Creem checkout ($1.49). Live pay needs Creem verification.
                   </p>
                   <button
                     type="button"

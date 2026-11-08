@@ -12,7 +12,7 @@ const plans = [
     price: "$1.49",
     detail: "1 HD clip · no watermark · download",
     cta: "Buy HD — $1.49",
-    href: "#upload",
+    href: "https://www.creem.io/payment/prod_w9pGaP1bfoaF20iNiGXKt?theme=dark",
     highlighted: true,
   },
   {
@@ -34,8 +34,7 @@ export function Pricing() {
             Simple pricing
           </h2>
           <p className="mt-2 text-muted">
-            Global checkout via Stripe (coming next). No subscription required
-            to start.
+            Checkout via Creem. No subscription required to start.
           </p>
         </div>
 
@@ -56,6 +55,9 @@ export function Pricing() {
               <p className="mt-2 flex-1 text-sm text-muted">{plan.detail}</p>
               <a
                 href={plan.href}
+                {...(plan.href.startsWith("http")
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
                 className={`mt-6 inline-flex h-10 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
                   plan.highlighted
                     ? "bg-accent text-white hover:bg-accent-soft"
@@ -68,7 +70,7 @@ export function Pricing() {
           ))}
         </div>
         <p className="mt-4 text-center text-xs text-muted">
-          Payments: Stripe not wired yet — buttons are UI only on Day 0.
+          HD unlock opens Creem Checkout. Live charges require Creem verification + your own domain.
         </p>
       </div>
     </section>

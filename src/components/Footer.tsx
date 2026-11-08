@@ -4,7 +4,7 @@ export function Footer() {
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 text-sm text-muted sm:flex-row">
         <p>© 2026 DollyZoom · Day 0 skeleton</p>
         <p className="text-xs">
-          Built for AI → Hitchcock dolly zoom · Stripe & Kling pending
+          Built for AI → Hitchcock dolly zoom · Creem checkout wired · I2V pending
         </p>
       </div>
     </footer>
