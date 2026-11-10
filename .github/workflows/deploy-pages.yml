@@ -33,8 +33,41 @@ jobs:
       - name: Build static export
         run: npm run build
         env:
-          # Project site: https://<user>.github.io/dollyzoom/
-          NEXT_PUBLIC_BASE_PATH: /dollyzoom
+          # https://dollyzoom.top is served at the site root (no /dollyzoom prefix).
+          # Relative asset URLs also resolve on the github.io project path.
+          NEXT_PUBLIC_RELATIVE_ASSETS: "1"
+
+      - name: Ensure Pages CNAME
+        # Actions publishing ignores this file and keeps the domain configured
+        # in Pages settings. It is still written into the artifact so a deploy
+        # cannot drop the domain name, and so a branch-based publish would
+        # keep dollyzoom.top.
+        run: printf '%s\n' 'dollyzoom.top' > out/CNAME
+
+      - name: Make favicon path relative
+        # The app-file favicon is emitted as /favicon.ico, which 404s on the
+        # github.io project path. Point it at the HTML directory instead.
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in Path("out").rglob("*.html"):
+              text = path.read_text()
+              updated = text.replace('"/favicon.ico', '"./favicon.ico')
+              if updated != text:
+                  path.write_text(updated)
+          PY
+
+      - name: Assert root-path export
+        run: |
+          if grep -q '/dollyzoom/_next' out/index.html; then
+            echo "Export still prefixes assets with /dollyzoom" >&2
+            exit 1
+          fi
+          if grep -q 'href="/favicon.ico' out/index.html; then
+            echo "Favicon link is still absolute" >&2
+            exit 1
+          fi
+          grep -qx 'dollyzoom.top' out/CNAME
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

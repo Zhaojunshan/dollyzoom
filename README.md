@@ -29,7 +29,7 @@ npm run preview        # serve out/ (e.g. http://localhost:3000)
 
 `out/index.html` must exist after a successful build.
 
-For a **GitHub Pages project site** preview locally (path prefix):
+The production export is built for the site root (`https://dollyzoom.top/`). To preview the old project-site prefix locally:
 
 ```bash
 NEXT_PUBLIC_BASE_PATH=/dollyzoom npm run build
@@ -38,16 +38,19 @@ NEXT_PUBLIC_BASE_PATH=/dollyzoom npm run build
 
 ## GitHub Pages deploy
 
-This repo is set up for a **project site**: `https://<username>.github.io/dollyzoom/`.
+Primary URL: **https://dollyzoom.top/** (apex). **https://www.dollyzoom.top/** follows the existing NameSilo `www` CNAME to `zhaojunshan.github.io` and GitHub redirects it to the apex. The site is served at the domain root, not under `/dollyzoom`.
 
-1. Push to GitHub (repo name ideally `dollyzoom`).
-2. In the repo: **Settings → Pages → Source: GitHub Actions**.
+1. Push to GitHub.
+2. In the repo: **Settings → Pages → Source: GitHub Actions**, custom domain `dollyzoom.top`.
 3. On push to `main`/`master` (or manual **Actions → Deploy GitHub Pages → Run workflow**), `.github/workflows/deploy-pages.yml`:
-   - builds with `NEXT_PUBLIC_BASE_PATH=/dollyzoom`
+   - builds with an empty base path and relative `_next` URLs (`NEXT_PUBLIC_RELATIVE_ASSETS=1`), so the same export loads at `https://dollyzoom.top/` and at `https://<username>.github.io/dollyzoom/`
+   - writes `out/CNAME` (`dollyzoom.top`). Actions publishing ignores this file and does not clear a domain set in Pages settings; the file is still part of the artifact
    - uploads `out/` via `actions/upload-pages-artifact`
    - deploys with `actions/deploy-pages`
 
-`next.config.ts` reads `NEXT_PUBLIC_BASE_PATH` (default empty) for `basePath` / `assetPrefix`. Leave it empty for a user/org site (`username.github.io` root).
+`next.config.ts` reads `NEXT_PUBLIC_BASE_PATH` (default empty) for `basePath` / `assetPrefix`. Leave it empty for the custom domain. NameSilo DNS is already pointed at GitHub Pages and is not managed from this repo.
+
+After the first deploy to the custom domain, enable **Enforce HTTPS** in Pages settings once GitHub has issued the certificate (that can take a while after DNS is visible).
 
 ## Page sections
 
