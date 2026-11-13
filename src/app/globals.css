@@ -33,3 +33,23 @@ body {
 html {
   scroll-behavior: smooth;
 }
+
+@keyframes dolly-bg {
+  0% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(1.65);
+  }
+}
+
+.dolly-bg {
+  animation: dolly-bg 3.4s ease-in-out infinite alternate;
+  transform-origin: center 38%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dolly-bg {
+    animation: none;
+  }
+}

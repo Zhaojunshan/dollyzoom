@@ -44,18 +44,14 @@ jobs:
         # keep dollyzoom.top.
         run: printf '%s\n' 'dollyzoom.top' > out/CNAME
 
-      - name: Make favicon path relative
-        # The app-file favicon is emitted as /favicon.ico, which 404s on the
-        # github.io project path. Point it at the HTML directory instead.
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          for path in Path("out").rglob("*.html"):
-              text = path.read_text()
-              updated = text.replace('"/favicon.ico', '"./favicon.ico')
-              if updated != text:
-                  path.write_text(updated)
-          PY
+      - name: Relativize favicon and nested assets
+        # Favicon and ./_next URLs are relative to each HTML file so nested
+        # routes (terms, privacy, acceptable-use) still load CSS and JS at
+        # the domain root and on a github.io project path.
+        run: python3 scripts/relativize-pages-export.py
+
+      - name: Test moderation proxy
+        run: npm test
 
       - name: Assert root-path export
         run: |
@@ -68,6 +64,19 @@ jobs:
             exit 1
           fi
           grep -qx 'dollyzoom.top' out/CNAME
+          grep -q 'https://www.creem.io/payment/prod_w9pGaP1bfoaF20iNiGXKt' out/index.html
+          grep -q 'Zjs315416174@gmail.com' out/index.html
+          grep -q '/demo/dolly-zoom.mp4' out/index.html
+          test -f out/terms/index.html
+          test -f out/privacy/index.html
+          test -f out/acceptable-use/index.html
+          test -f out/demo/before.jpg
+          test -f out/demo/dolly-zoom.mp4
+          if grep -R -n -E 'Sample clip TBD|CREEM_API_KEY|creem_test_|x-api-key' out \
+            --include='*.html' --include='*.js' --include='*.json'; then
+            echo "Pages bundle contains a placeholder or secret-like string" >&2
+            exit 1
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

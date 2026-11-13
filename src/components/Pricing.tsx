@@ -1,44 +1,37 @@
+import Link from "next/link";
+
+import { CheckoutLink } from "@/components/CheckoutLink";
+
 const plans = [
   {
     name: "Try",
     price: "Free",
-    detail: "1 watermarked preview",
-    cta: "Upload a photo",
-    href: "#upload",
+    detail: "1 watermarked preview after content screening",
     highlighted: false,
   },
   {
     name: "Single HD",
     price: "$1.49",
-    detail: "1 HD clip · no watermark · download",
-    cta: "Buy HD — $1.49",
-    href: "https://www.creem.io/payment/prod_w9pGaP1bfoaF20iNiGXKt?theme=dark",
+    detail: "Dolly Zoom HD Unlock · 1 HD clip · no watermark",
     highlighted: true,
-  },
-  {
-    name: "Pack",
-    price: "$9.90",
-    detail: "10 HD clips · best for creators",
-    cta: "Get 10 for $9.90",
-    href: "#upload",
-    highlighted: false,
   },
 ];
 
 export function Pricing() {
   return (
     <section id="pricing" className="scroll-mt-20 px-4 py-12 sm:px-6">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-3xl">
         <div className="mb-8 text-center">
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
             Simple pricing
           </h2>
           <p className="mt-2 text-muted">
-            Checkout via Creem. No subscription required to start.
+            The HD button continues to Creem checkout in this tab. Creem is the
+            merchant of record. No subscription required.
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           {plans.map((plan) => (
             <div
               key={plan.name}
@@ -49,29 +42,23 @@ export function Pricing() {
               }`}
             >
               <p className="text-sm font-medium text-muted">{plan.name}</p>
-              <p className="mt-2 text-3xl font-bold tracking-tight">
-                {plan.price}
-              </p>
+              <p className="mt-2 text-3xl font-bold tracking-tight">{plan.price}</p>
               <p className="mt-2 flex-1 text-sm text-muted">{plan.detail}</p>
-              <a
-                href={plan.href}
-                {...(plan.href.startsWith("http")
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
-                className={`mt-6 inline-flex h-10 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
-                  plan.highlighted
-                    ? "bg-accent text-white hover:bg-accent-soft"
-                    : "border border-card-border hover:border-zinc-500"
-                }`}
-              >
-                {plan.cta}
-              </a>
+              {plan.highlighted ? (
+                <CheckoutLink className="mt-6 inline-flex h-11 items-center justify-center rounded-full bg-accent text-sm font-semibold text-white hover:bg-accent-soft transition-colors">
+                  Buy HD — $1.49
+                </CheckoutLink>
+              ) : (
+                <Link
+                  href="/#upload"
+                  className="mt-6 inline-flex h-11 items-center justify-center rounded-full border border-card-border text-sm font-semibold hover:border-zinc-500 transition-colors"
+                >
+                  Upload a photo
+                </Link>
+              )}
             </div>
           ))}
         </div>
-        <p className="mt-4 text-center text-xs text-muted">
-          HD unlock opens Creem Checkout. Live charges require Creem verification + your own domain.
-        </p>
       </div>
     </section>
   );
