@@ -1,0 +1,8 @@
+name = "dollyzoom-moderation"
+main = "worker.mjs"
+compatibility_date = "2024-11-01"
+
+# CREEM_API_KEY is a secret, not a var:
+#   npx wrangler secret put CREEM_API_KEY
+# Create it in Creem Dashboard → Settings → API Keys.
+# The live key prefix is creem_ (not creem_test_).

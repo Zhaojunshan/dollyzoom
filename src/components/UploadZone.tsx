@@ -1,49 +1,59 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 
-import { mockGenerate } from "@/lib/mockGenerate";
+import { CheckoutLink } from "@/components/CheckoutLink";
+import { DollyPreview } from "@/components/DollyPreview";
+import { ScreeningError, screenGeneration } from "@/lib/screenGeneration";
 
-type GenerateStatus = "idle" | "uploading" | "generating" | "done" | "error";
+type GenerateStatus = "idle" | "screening" | "ready" | "error";
+
+function screeningMessage(code: string): string {
+  if (code === "prompt_rejected") {
+    return "This request was blocked. Sexual, adult, and NSFW content is not allowed.";
+  }
+  return "Content screening did not succeed, so no preview was created. Please try again.";
+}
 
 export function UploadZone() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const requestId = useRef(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [status, setStatus] = useState<GenerateStatus>("idle");
-  const [mockJobId, setMockJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [payNote, setPayNote] = useState<string | null>(null);
 
   const reset = useCallback(() => {
+    requestId.current += 1;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setFileName(null);
     setStatus("idle");
-    setMockJobId(null);
     setError(null);
-    setPayNote(null);
     if (inputRef.current) inputRef.current.value = "";
   }, [previewUrl]);
 
-  const onFile = useCallback((file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please upload an image (JPG, PNG, or WEBP).");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Max file size is 10 MB.");
-      return;
-    }
-    setError(null);
-    setPayNote(null);
-    setMockJobId(null);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(file));
-    setFileName(file.name);
-    setStatus("idle");
-  }, [previewUrl]);
+  const onFile = useCallback(
+    (file: File | undefined) => {
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        setError("Please upload an image (JPG, PNG, or WEBP).");
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setError("Max file size is 10 MB.");
+        return;
+      }
+      setError(null);
+      setStatus("idle");
+      requestId.current += 1;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(file));
+      setFileName(file.name);
+    },
+    [previewUrl],
+  );
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -54,30 +64,23 @@ export function UploadZone() {
   );
 
   const handleGenerate = async () => {
-    if (!previewUrl) return;
-    setStatus("generating");
+    if (!previewUrl || status === "screening") return;
+    const id = ++requestId.current;
+    setStatus("screening");
     setError(null);
-    setPayNote(null);
     try {
-      const data = await mockGenerate({
-        fileName: fileName ?? "portrait.jpg",
-        effect: "dolly_zoom",
-      });
-      setMockJobId(data.jobId);
-      setStatus("done");
+      const result = await screenGeneration();
+      if (id !== requestId.current) return;
+      if (!result.moderationId) {
+        throw new ScreeningError("moderation_unavailable");
+      }
+      setStatus("ready");
     } catch (err) {
+      if (id !== requestId.current) return;
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      const code = err instanceof ScreeningError ? err.code : "moderation_unavailable";
+      setError(screeningMessage(code));
     }
-  };
-
-  const handleBuy = () => {
-    // Creem Checkout Link — live charges need Creem account verification + custom domain
-    window.open(
-      "https://www.creem.io/payment/prod_w9pGaP1bfoaF20iNiGXKt?theme=dark",
-      "_blank",
-      "noopener,noreferrer",
-    );
   };
 
   return (
@@ -88,7 +91,8 @@ export function UploadZone() {
             Upload & generate
           </h2>
           <p className="mt-2 text-muted">
-            Local preview only for now. Image-to-video API is mocked.
+            The sample above is a finished example. A watermarked preview of
+            your photo is created in this browser only after content screening.
           </p>
         </div>
 
@@ -157,31 +161,15 @@ export function UploadZone() {
                 <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-card-border bg-background/80 px-4 py-8 text-center">
                   {status === "idle" && (
                     <p className="text-sm text-muted">
-                      Ready to mock-generate a dolly zoom clip.
+                      Ready. Screening runs before the preview is created.
                     </p>
                   )}
-                  {status === "generating" && (
+                  {status === "screening" && (
                     <p className="text-sm text-accent-soft animate-pulse">
-                      Generating Hitchcock vertigo shot…
+                      Screening this request…
                     </p>
                   )}
-                  {status === "done" && (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-success">
-                        Mock job complete
-                      </p>
-                      <p className="font-mono text-xs text-muted">
-                        jobId: {mockJobId}
-                      </p>
-                      <p className="text-xs text-muted">
-                        Watermarked preview placeholder — real I2V (Kling /
-                        Seedance) comes next.
-                      </p>
-                      <div className="mx-auto mt-3 aspect-video w-full max-w-xs rounded-lg bg-gradient-to-br from-zinc-800 via-zinc-700 to-orange-900/40 ring-1 ring-card-border flex items-center justify-center text-xs text-muted">
-                        ▶ Preview video (mock)
-                      </div>
-                    </div>
-                  )}
+                  {status === "ready" && previewUrl && <DollyPreview src={previewUrl} />}
                   {status === "error" && (
                     <p className="text-sm text-red-400">{error}</p>
                   )}
@@ -191,25 +179,15 @@ export function UploadZone() {
                   <button
                     type="button"
                     onClick={handleGenerate}
-                    disabled={status === "generating"}
+                    disabled={status === "screening"}
                     className="h-11 rounded-full bg-accent font-semibold text-white hover:bg-accent-soft disabled:opacity-50 transition-colors"
                   >
-                    {status === "generating"
-                      ? "Generating…"
-                      : status === "done"
-                        ? "Regenerate (mock)"
-                        : "Generate dolly zoom (mock)"}
+                    {status === "screening"
+                      ? "Screening…"
+                      : status === "ready"
+                        ? "Screen and preview again"
+                        : "Generate dolly zoom preview"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleBuy}
-                    className="h-11 rounded-full border border-accent/60 bg-transparent font-semibold text-accent-soft hover:bg-accent/10 transition-colors"
-                  >
-                    Buy HD — $1.49
-                  </button>
-                  <p className="text-center text-[11px] text-muted">
-                    Opens Creem checkout ($1.49). Live pay needs Creem verification.
-                  </p>
                   <button
                     type="button"
                     onClick={reset}
@@ -225,12 +203,23 @@ export function UploadZone() {
           {error && status !== "error" && (
             <p className="mt-3 text-center text-sm text-red-400">{error}</p>
           )}
-          {payNote && (
-            <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-200">
-              {payNote}
+
+          <div className="mt-6 flex flex-col items-center gap-2 border-t border-card-border pt-6">
+            <CheckoutLink className="inline-flex h-11 w-full items-center justify-center rounded-full border border-accent/60 bg-transparent font-semibold text-accent-soft hover:bg-accent/10 transition-colors sm:w-auto sm:min-w-64">
+              Buy HD — $1.49
+            </CheckoutLink>
+            <p className="text-center text-[11px] text-muted">
+              Continues to Creem checkout in this tab ($1.49).
             </p>
-          )}
+          </div>
         </div>
+        <p className="mt-4 text-center text-xs text-muted">
+          Sexual, adult, and NSFW content is prohibited. See the{" "}
+          <Link href="/acceptable-use/" className="underline underline-offset-2 hover:text-foreground">
+            Acceptable Use Policy
+          </Link>
+          .
+        </p>
       </div>
     </section>
   );

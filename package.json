@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "preview": "npx --yes serve out"
+    "test": "node --test server/app.test.mjs",
+    "preview": "npx --yes serve out",
+    "moderation-proxy": "node server/index.mjs"
   },
   "dependencies": {
     "next": "16.4.5",
