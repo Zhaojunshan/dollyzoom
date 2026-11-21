@@ -2,7 +2,15 @@ name = "dollyzoom-moderation"
 main = "worker.mjs"
 compatibility_date = "2024-11-01"
 
-# CREEM_API_KEY is a secret, not a var:
-#   npx wrangler secret put CREEM_API_KEY
-# Create it in Creem Dashboard → Settings → API Keys.
+# Secrets, not vars. Create the API key in Creem Dashboard → Developers → API Keys.
 # The live key prefix is creem_ (not creem_test_).
+#   npx wrangler secret put CREEM_API_KEY
+#   npx wrangler secret put CREEM_WEBHOOK_SECRET
+#   npx wrangler secret put CREEM_SESSION_SECRET
+#
+# CREEM_WEBHOOK_SECRET is the signing secret from Developers → Webhooks.
+# CREEM_SESSION_SECRET is a random string of at least 16 characters
+# (for example `openssl rand -hex 32`). It only signs browser sessions.
+
+[vars]
+GENERATION_CREDIT_COST = "1"

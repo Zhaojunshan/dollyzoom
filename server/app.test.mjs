@@ -269,7 +269,11 @@ test("the HTTP server hides the key and blocks until allow", async () => {
     const health = await fetch(`http://127.0.0.1:${port}/health`);
     const healthText = await health.text();
     assert.equal(healthText.includes(LIVE), false);
-    assert.deepEqual(JSON.parse(healthText), { ok: true, key: "live" });
+    assert.deepEqual(JSON.parse(healthText), {
+      ok: true,
+      key: "live",
+      credits: "unconfigured",
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

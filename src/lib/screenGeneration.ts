@@ -18,25 +18,37 @@ function endpointAllowed(endpoint: string): boolean {
   return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(endpoint);
 }
 
-/**
- * Ask the server proxy to screen this generation before any preview.
- * The Creem API key stays on that server. Empty config, network errors,
- * deny, and flag all throw and must not start a preview.
- */
-export async function screenGeneration(): Promise<{ moderationId: string }> {
-  let endpoint = "";
+/** Public proxy URL from moderation.json. Empty when the site must fail closed. */
+export async function loadModerationEndpoint(): Promise<string> {
   try {
     const config = await fetch(publicPath("/moderation.json"), {
       cache: "no-store",
     });
-    if (!config.ok) throw new Error("config");
+    if (!config.ok) return "";
     const data = (await config.json()) as { endpoint?: unknown };
-    endpoint = typeof data.endpoint === "string" ? data.endpoint.trim() : "";
+    const endpoint = typeof data.endpoint === "string" ? data.endpoint.trim() : "";
+    if (!endpoint || !endpointAllowed(endpoint)) return "";
+    return endpoint;
   } catch {
-    throw new ScreeningError("moderation_unavailable");
+    return "";
   }
+}
 
-  if (!endpoint || !endpointAllowed(endpoint)) {
+/** Origin of the moderation proxy, derived from its /v1/generate URL. */
+export function workerOrigin(endpoint: string): string {
+  if (!endpoint.endsWith("/v1/generate")) return "";
+  return endpoint.slice(0, -"/v1/generate".length);
+}
+
+/**
+ * Ask the server proxy to screen this generation before any preview.
+ * The Creem API key stays on that server. Empty config, network errors,
+ * deny, and flag all throw and must not start a preview.
+ * This call does not debit generation credits.
+ */
+export async function screenGeneration(): Promise<{ moderationId: string }> {
+  const endpoint = await loadModerationEndpoint();
+  if (!endpoint) {
     throw new ScreeningError("moderation_unavailable");
   }
 

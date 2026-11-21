@@ -81,7 +81,10 @@ Commit that URL (it is not secret) and let Pages redeploy.
 Node, from this repo:
 
 ```bash
-CREEM_API_KEY="creem_..." npm run moderation-proxy
+CREEM_API_KEY="creem_..." \
+CREEM_WEBHOOK_SECRET="..." \
+CREEM_SESSION_SECRET="..." \
+npm run moderation-proxy
 ```
 
 The process listens on `$PORT` or `8787`.
@@ -90,7 +93,7 @@ Docker, context = repository root:
 
 ```bash
 docker build -f server/Dockerfile -t dollyzoom-moderation .
-docker run --env CREEM_API_KEY -p 8787:8787 dollyzoom-moderation
+docker run --env CREEM_API_KEY --env CREEM_WEBHOOK_SECRET --env CREEM_SESSION_SECRET -p 8787:8787 dollyzoom-moderation
 ```
 
 Cloudflare Workers:
@@ -98,6 +101,8 @@ Cloudflare Workers:
 ```bash
 cd server
 npx wrangler secret put CREEM_API_KEY
+npx wrangler secret put CREEM_WEBHOOK_SECRET
+npx wrangler secret put CREEM_SESSION_SECRET
 npx wrangler deploy
 ```
 
@@ -112,9 +117,64 @@ That click must reach `POST https://api.creem.io/v1/moderation/prompt` with head
 
 The proxy allows browser calls from `https://dollyzoom.top`, `https://www.dollyzoom.top`, and localhost only.
 
-### Customer credits (still required from the merchant)
+### Customer credits
 
-Creem’s Gen AI guide also expects AI generation credits: each buyer has a `generation` wallet, and each paid generation debits it with the moderation result id. This static site has no accounts, so it cannot open those wallets yet. The proxy returns `moderationId` for that debit. In the Creem dashboard, on the existing product `prod_w9pGaP1bfoaF20iNiGXKt` (do not change the id): **Products → Delivery → Add → New AI generation credits**, with moderation required. Do not also grant those credits from a webhook. Wiring per-user debits needs a signed-in app, which GitHub Pages cannot host.
+Paid HD generation uses a Creem **generation wallet**. This repo does not store a credit balance. Creem is the ledger.
+
+There is no login. Checkout collects the email and creates the Creem customer. After payment, Creem redirects to `https://dollyzoom.top/` with a signed query string. The homepage posts that query to the Worker, which checks the signature, sets `external_id` when the customer does not have one, and ensures a wallet named `generation`. The browser keeps a 7-day HMAC session in `localStorage`. Balance is read from Creem on each visit. Losing site data means opening the success return again (or buying again) to bind this browser. That is the whole identity model.
+
+The static **Buy HD — $1.49** link is unchanged: `https://www.creem.io/payment/prod_w9pGaP1bfoaF20iNiGXKt`. A browser that already has a session can also open a checkout tied to that same customer (`POST /v1/credits/checkout`) so a later purchase lands in the same wallet. `POST /v1/generate` is the free watermarked preview and does **not** debit. `POST /v1/generations` is the paid path: balance, then Moderation API, then debit with that moderation id, then the model hook. The hook is not wired to a video model yet. It fails, and the Worker reverses the debit. Do not treat a 501 as a delivered HD clip.
+
+Purchased credits are added by Creem when the product grants AI generation credits. The Worker never calls the credit endpoint for a purchase. `checkout.completed` only binds the customer and wallet. `credits.granted` is acknowledged and ignored.
+
+| Path | Role |
+| --- | --- |
+| `GET /health` | Key class and whether credits secrets are set. Never returns secret values. |
+| `POST /v1/generate` | Free preview. Screen only. |
+| `GET /v1/credits` | Live wallet balance for the browser session. |
+| `POST /v1/credits/claim` | Verify the checkout return query and issue a session. |
+| `POST /v1/credits/checkout` | Customer-bound checkout, or the static $1.49 link when there is no session. |
+| `POST /v1/generations` | Paid path. Debits only after an `allow` result. |
+| `POST /v1/creem/webhook` | Signed Creem webhooks. Does not grant credits. |
+
+#### Environment variables
+
+Set these on the Worker. Do not commit values.
+
+| Name | Purpose |
+| --- | --- |
+| `CREEM_API_KEY` | Live key, prefix `creem_`. Same key as moderation. |
+| `CREEM_WEBHOOK_SECRET` | Signing secret from Developers → Webhooks. |
+| `CREEM_SESSION_SECRET` | Random string, at least 16 characters (`openssl rand -hex 32`). Signs the browser session only. |
+| `GENERATION_CREDIT_COST` | Credits debited per paid HD attempt. Default `1`. This does not change what a purchase grants. |
+| `CREEM_SUCCESS_URL` | Optional. Must be `https://dollyzoom.top/`, `https://www.dollyzoom.top/…`, or localhost. Default `https://dollyzoom.top/`. |
+| `CREEM_ALLOW_TEST_KEY` | Leave unset in production. |
+
+`server/env.example` lists the names. `GET /health` returns `"credits":"ready"` only when the API key is allowed and both secrets are set.
+
+#### Merchant dashboard (not done by this change)
+
+These clicks are still required. Deploying the Worker does not flip them.
+
+1. **AI generation credits on the existing product.** Creem Dashboard → **Products** → open `prod_w9pGaP1bfoaF20iNiGXKt` (do not create a new product and do not change this id). Open **Delivery** → **Add** → **New AI generation credits**. Description, for example `HD dolly zoom`. Credit amount: choose how many credits one $1.49 purchase grants (use `1` if one purchase should pay for one HD attempt at the default debit). Unit label: `credits`. This product is one-time, so there is no “unused credits reset each billing period” control. Save. Leave pricing at $1.49.
+2. **Gen AI notice.** If Creem shows a Gen AI / AI image or video notice while saving that delivery, or under account review, read it and accept it in the dashboard. This repository cannot accept it for you.
+3. **Return URL.** On that same product, set the default success URL (`default_success_url`) to `https://dollyzoom.top/`. Creem appends `checkout_id`, `order_id`, `customer_id`, `product_id`, `request_id`, and `signature`. The registered website stays `https://dollyzoom.top/`. Do not point the product at another domain.
+4. **Webhook.** Creem Dashboard → **Developers** → **Webhooks** → add an endpoint. URL: `https://dollyzoom-moderation.eight-grenadilla.workers.dev/v1/creem/webhook`. Subscribe at least `checkout.completed` and `credits.granted`. Copy the signing secret into `CREEM_WEBHOOK_SECRET`. Do not add a handler that credits the wallet yourself.
+
+#### Deploy the Worker
+
+Do this from a machine that is logged into Cloudflare. This change does not deploy it.
+
+```bash
+cd server
+npx wrangler secret put CREEM_API_KEY
+npx wrangler secret put CREEM_WEBHOOK_SECRET
+npx wrangler secret put CREEM_SESSION_SECRET
+npx wrangler deploy
+curl -sS https://dollyzoom-moderation.eight-grenadilla.workers.dev/health
+```
+
+`public/moderation.json` already points the site at `POST /v1/generate` on that host. The credits routes share that origin. After deploy, `health` should report `"key":"live"` and `"credits":"ready"`.
 
 ## Sample media
 

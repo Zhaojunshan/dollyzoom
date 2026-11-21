@@ -1,10 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CheckoutLink } from "@/components/CheckoutLink";
 import { DollyPreview } from "@/components/DollyPreview";
+import {
+  claimPurchase,
+  clearSession,
+  fetchWallet,
+  loadSession,
+  saveSession,
+  safeCheckoutUrl,
+  startPaidGeneration,
+  type WalletSnapshot,
+} from "@/lib/creditsClient";
 import { ScreeningError, screenGeneration } from "@/lib/screenGeneration";
 
 type GenerateStatus = "idle" | "screening" | "ready" | "error";
@@ -16,6 +26,24 @@ function screeningMessage(code: string): string {
   return "Content screening did not succeed, so no preview was created. Please try again.";
 }
 
+function paidMessage(body: { error?: string; refunded?: boolean; transactionId?: string }): string {
+  if (body.error === "prompt_rejected") return screeningMessage("prompt_rejected");
+  if (body.error === "generation_not_implemented" && body.refunded) {
+    return "HD video rendering is not connected yet. The credit debit was reversed, so the wallet balance is unchanged.";
+  }
+  if (body.error === "generation_failed" && body.refunded) {
+    return "HD generation failed. The credit debit was reversed.";
+  }
+  if (body.error === "refund_pending") {
+    const id = body.transactionId ? ` Reference ${body.transactionId}.` : "";
+    return `HD generation failed and the credit refund did not complete. Contact support.${id}`;
+  }
+  if (body.error === "insufficient_credits" || body.error === "credits_needed") {
+    return "Generation credits are required. Continuing to the $1.49 checkout.";
+  }
+  return "The credit check or content screening did not succeed, so nothing was generated.";
+}
+
 export function UploadZone() {
   const inputRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
@@ -23,6 +51,11 @@ export function UploadZone() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [status, setStatus] = useState<GenerateStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<WalletSnapshot | null>(null);
+  const [walletLabel, setWalletLabel] = useState("Checking generation wallet…");
+  const [paidNote, setPaidNote] = useState<string | null>(null);
+  const [paidBusy, setPaidBusy] = useState(false);
+  const paidLock = useRef(false);
 
   const reset = useCallback(() => {
     requestId.current += 1;
@@ -31,6 +64,7 @@ export function UploadZone() {
     setFileName(null);
     setStatus("idle");
     setError(null);
+    setPaidNote(null);
     if (inputRef.current) inputRef.current.value = "";
   }, [previewUrl]);
 
@@ -46,6 +80,7 @@ export function UploadZone() {
         return;
       }
       setError(null);
+      setPaidNote(null);
       setStatus("idle");
       requestId.current += 1;
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -54,6 +89,97 @@ export function UploadZone() {
     },
     [previewUrl],
   );
+
+  useEffect(() => {
+    let cancel = false;
+    const apply = (next: WalletSnapshot) => {
+      if (cancel) return;
+      saveSession(next.session);
+      setWallet(next);
+      setWalletLabel(`${next.balance} credits`);
+    };
+    const needed = () => {
+      if (cancel) return;
+      setWallet(null);
+      setWalletLabel("credits needed");
+    };
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("signature") && params.has("customer_id") && params.has("product_id")) {
+        try {
+          const next = await claimPurchase(window.location.search);
+          apply(next);
+          const url = new URL(window.location.href);
+          for (const key of [
+            "checkout_id",
+            "order_id",
+            "customer_id",
+            "subscription_id",
+            "product_id",
+            "request_id",
+            "signature",
+          ]) {
+            url.searchParams.delete(key);
+          }
+          window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+          return;
+        } catch (err) {
+          if (cancel) return;
+          const code = err instanceof Error ? err.message : "";
+          setWallet(null);
+          setWalletLabel("credits needed");
+          setPaidNote(
+            code === "payment_not_verified"
+              ? "This return link could not be verified, so no wallet was opened."
+              : "The generation wallet could not be opened from this return link.",
+          );
+          return;
+        }
+      }
+      const session = loadSession();
+      if (!session) {
+        needed();
+        return;
+      }
+      try {
+        apply(await fetchWallet(session));
+      } catch (err) {
+        if (cancel) return;
+        if (err instanceof Error && err.message === "credits_needed") {
+          clearSession();
+          needed();
+          return;
+        }
+        setWalletLabel("wallet unavailable");
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  const refreshWallet = useCallback(async () => {
+    const session = wallet?.session || loadSession();
+    if (!session) {
+      setWallet(null);
+      setWalletLabel("credits needed");
+      return;
+    }
+    try {
+      const next = await fetchWallet(session);
+      saveSession(next.session);
+      setWallet(next);
+      setWalletLabel(`${next.balance} credits`);
+    } catch (err) {
+      if (err instanceof Error && err.message === "credits_needed") {
+        clearSession();
+        setWallet(null);
+        setWalletLabel("credits needed");
+        return;
+      }
+      setWalletLabel("wallet unavailable");
+    }
+  }, [wallet?.session]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -83,6 +209,27 @@ export function UploadZone() {
     }
   };
 
+  const handlePaid = async () => {
+    if (!previewUrl || paidLock.current) return;
+    paidLock.current = true;
+    setPaidBusy(true);
+    setPaidNote(null);
+    const generationId = `gen_${crypto.randomUUID()}`;
+    try {
+      const result = await startPaidGeneration(wallet?.session || loadSession(), generationId);
+      if (result.error === "insufficient_credits" || result.error === "credits_needed") {
+        setPaidNote(paidMessage(result));
+        window.location.assign(safeCheckoutUrl(result.checkoutUrl));
+        return;
+      }
+      setPaidNote(paidMessage(result));
+      if (result.ok || result.refunded) await refreshWallet();
+    } finally {
+      paidLock.current = false;
+      setPaidBusy(false);
+    }
+  };
+
   return (
     <section id="upload" className="scroll-mt-20 px-4 py-12 sm:px-6">
       <div className="mx-auto max-w-3xl">
@@ -93,10 +240,29 @@ export function UploadZone() {
           <p className="mt-2 text-muted">
             The sample above is a finished example. A watermarked preview of
             your photo is created in this browser only after content screening.
+            That preview does not spend generation credits.
           </p>
         </div>
 
         <div className="rounded-2xl border border-card-border bg-card p-5 sm:p-8">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-2 text-sm">
+            <p data-wallet="balance">
+              Generation wallet: <span className="font-medium text-foreground">{walletLabel}</span>
+              {wallet ? ` · HD uses ${wallet.cost} ${wallet.cost === "1" ? "credit" : "credits"}` : ""}
+            </p>
+            <button
+              type="button"
+              onClick={refreshWallet}
+              className="text-xs text-muted underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Refresh balance
+            </button>
+            {paidNote && (
+              <p className="w-full text-xs text-muted" data-paid-note="1">
+                {paidNote}
+              </p>
+            )}
+          </div>
           {!previewUrl ? (
             <div
               onDragOver={(e) => e.preventDefault()}
@@ -187,6 +353,15 @@ export function UploadZone() {
                       : status === "ready"
                         ? "Screen and preview again"
                         : "Generate dolly zoom preview"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePaid}
+                    disabled={paidBusy || status === "screening"}
+                    data-generate="hd"
+                    className="h-11 rounded-full border border-accent/60 font-semibold text-accent-soft hover:bg-accent/10 disabled:opacity-50 transition-colors"
+                  >
+                    {paidBusy ? "Checking credits…" : "Generate HD"}
                   </button>
                   <button
                     type="button"
