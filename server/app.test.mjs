@@ -56,6 +56,10 @@ test("upload-only generations screen the fixed dolly-zoom prompt", () => {
   assert.deepEqual(selectPrompt({ effect: "dolly_zoom", userPrompt: "   " }), {
     prompt: FIXED_DOLLY_ZOOM_PROMPT,
   });
+  assert.match(FIXED_DOLLY_ZOOM_PROMPT, /camera quickly pushes in/);
+  assert.match(FIXED_DOLLY_ZOOM_PROMPT, /lens zooms wider/);
+  assert.match(FIXED_DOLLY_ZOOM_PROMPT, /background perspective stretches and recedes strongly/);
+  assert.match(FIXED_DOLLY_ZOOM_PROMPT, /Everyday clothing, natural light, no text\.$/);
 });
 
 test("user text is screened on its own, without the template", () => {

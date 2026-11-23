@@ -24,9 +24,16 @@ export function testGrantFlag(value) {
  * Prompt used when a generation has no user-written text (upload-only
  * dolly zoom). Creem bills repeated identical prompts at 0 units.
  * Do not prepend policy instructions; that can itself change the decision.
+ *
+ * Wan image-to-video reads motion and camera words, not a still description.
+ * The prompt guide uses "camera pushes in" and "quickly" to set speed and
+ * intensity. wan2.6-i2v-flash has no
+ * motion-strength parameter. Resolution, duration, and audio stay on the
+ * billing defaults. prompt_extend stays false so this screened sentence is
+ * what the model sees; shot_type applies only when prompt_extend is true.
  */
 export const FIXED_DOLLY_ZOOM_PROMPT =
-  "Cinematic Hitchcock dolly zoom of one portrait photo: the subject stays the same size while the background perspective widens. Everyday clothing, natural light, no text.";
+  "Hitchcock dolly zoom, one continuous moving shot. The camera quickly pushes in for the whole shot while the lens zooms wider: the person stays the same size, with the same face, clothing, and pose, and the background perspective stretches and recedes strongly toward the edges of the frame. The push is obvious from the first moment. Everyday clothing, natural light, no text.";
 
 const DEFAULT_ORIGINS = ["https://dollyzoom.top", "https://www.dollyzoom.top"];
 
