@@ -70,7 +70,7 @@ async function loadDrawable(file: File): Promise<Drawable> {
 }
 
 /**
- * Check MiniMax's still-image limits, then shrink a large photo before upload.
+ * Check the still-image limits, then shrink a large photo before the paid upload.
  * The free preview never calls this. Paid HD does.
  */
 export async function preparePortrait(file: File): Promise<PreparedPortrait> {

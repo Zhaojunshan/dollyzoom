@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test server/app.test.mjs server/credits.test.mjs server/minimax.test.mjs",
+    "test": "node --test server/app.test.mjs server/credits.test.mjs server/dashscope.test.mjs",
     "preview": "npx --yes serve out",
     "moderation-proxy": "node server/index.mjs"
   },

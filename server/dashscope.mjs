@@ -2,26 +2,41 @@ import { playableVideoUrl } from "../src/lib/playableVideoUrl.mjs";
 import { hmacSha256Hex, safeEqualHex, sessionConfigured } from "./session.mjs";
 
 /**
- * Paid HD image-to-video.
+ * Paid HD image-to-video through Alibaba Cloud Model Studio (DashScope / Bailian).
  *
- * MiniMax video generation V2 (Hailuo / H3), checked against
- * https://platform.minimax.io/docs/api-reference/video-generation-v2-create
- * and https://platform.minimax.io/docs/api-reference/video-generation-v2-query.
+ * Checked against the Wan first-frame image-to-video reference:
+ * https://help.aliyun.com/en/model-studio/legacy-image-to-video-api-reference/
+ * https://help.aliyun.com/en/model-studio/image-to-video-guide
  *
- * MiniMax-H3 is the current Hailuo image-to-video model. 768P for 5 seconds
- * is the paid HD setting. Published H3 768P output is $0.08 per second, so
- * 5 seconds is $0.40 before tax. The first input images on a task are inside
- * the free image quota. 2K is $0.13 per second and is not requested.
- * Hailuo 2.3 cannot do 5 seconds (only 6 or 10), so this path does not use it.
+ * wan2.6-i2v-flash is asynchronous. Create with X-DashScope-Async: enable,
+ * then poll GET /api/v1/tasks/{task_id}. A China (Beijing) Bailian key uses
+ * https://dashscope.aliyuncs.com. The workspace domain
+ * https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com also works; set
+ * DASHSCOPE_BASE_URL when that host is required. The key is DASHSCOPE_API_KEY.
+ * Never log it or put it in the repo.
  *
- * The key is MINIMAX_API_KEY. Never log it or put it in the repo.
+ * Defaults are 720P, 5 seconds, and audio false. wan2.6-i2v-flash bills a
+ * silent clip only when parameters.audio is explicitly false. Resolution,
+ * duration, and audio can be changed with WAN_RESOLUTION, WAN_DURATION, and
+ * WAN_AUDIO. The model name stays wan2.6-i2v-flash.
+ *
+ * The returned video_url is a temporary OSS link, valid for about 24 hours.
  */
-export const MINIMAX_API_BASE = "https://api.minimax.io";
-export const HAILUO_MODEL = "MiniMax-H3";
-export const HAILUO_RESOLUTION = "768P";
-export const HAILUO_DURATION = 5;
+export const WAN_MODEL = "wan2.6-i2v-flash";
+export const BEIJING_BASE_URL = "https://dashscope.aliyuncs.com";
+export const SINGAPORE_BASE_URL = "https://dashscope-intl.aliyuncs.com";
 export const VIDEO_TICKET_TTL_MS = 24 * 60 * 60 * 1000;
 
+const REGION_BASE = {
+  beijing: BEIJING_BASE_URL,
+  "cn-beijing": BEIJING_BASE_URL,
+  china: BEIJING_BASE_URL,
+  singapore: SINGAPORE_BASE_URL,
+  intl: SINGAPORE_BASE_URL,
+  "ap-southeast-1": SINGAPORE_BASE_URL,
+};
+
+const RESOLUTIONS = new Set(["480P", "720P", "1080P"]);
 const TASK_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const TX_ID = /^cct_[A-Za-z0-9]+$/;
 const ACCOUNT_ID = /^cca_[A-Za-z0-9]+$/;
@@ -31,7 +46,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 const textEncoder = new TextEncoder();
 
-export function minimaxConfigured(apiKey) {
+export function dashscopeConfigured(apiKey) {
   return typeof apiKey === "string" && apiKey.trim().length > 0;
 }
 
@@ -42,11 +57,43 @@ function generationFailed() {
 }
 
 function asTaskId(value) {
-  if (typeof value === "number" && Number.isSafeInteger(value)) {
-    value = String(value);
-  }
+  if (typeof value === "number" && Number.isSafeInteger(value)) value = String(value);
   if (typeof value === "string" && TASK_ID.test(value)) return value;
   return "";
+}
+
+/** HTTPS origin only. A bad override stays on the Beijing host. */
+export function resolveDashscopeBaseUrl({ baseUrl, region } = {}) {
+  const explicit = typeof baseUrl === "string" ? baseUrl.trim() : "";
+  if (explicit) {
+    try {
+      const url = new URL(explicit);
+      if (url.protocol === "https:" && !url.username && !url.password) {
+        return url.origin;
+      }
+    } catch {
+      // Fall through to the region default.
+    }
+  }
+  const name = typeof region === "string" ? region.trim().toLowerCase() : "";
+  return REGION_BASE[name] || BEIJING_BASE_URL;
+}
+
+/** Defaults: 720P, 5 seconds, silent. Unknown values stay on those defaults. */
+export function wanSettings(env = {}) {
+  const resolutionRaw = String(env.resolution ?? "720P").trim().toUpperCase();
+  const resolution = RESOLUTIONS.has(resolutionRaw) ? resolutionRaw : "720P";
+  const durationRaw = Number(env.duration ?? 5);
+  const duration = Number.isInteger(durationRaw) && durationRaw >= 2 && durationRaw <= 15 ? durationRaw : 5;
+  const audioRaw = String(env.audio ?? "false").trim().toLowerCase();
+  const audio = audioRaw === "1" || audioRaw === "true";
+  return {
+    model: WAN_MODEL,
+    resolution,
+    duration,
+    audio,
+    baseUrl: resolveDashscopeBaseUrl({ baseUrl: env.baseUrl, region: env.region }),
+  };
 }
 
 /** JPG, PNG, or WEBP data URL only. Remote URLs are rejected. */
@@ -69,73 +116,72 @@ export function parsePortraitDataUrl(value) {
   return { dataUrl: `data:image/${mime};base64,${b64}` };
 }
 
-/** Request body for one paid dolly zoom. Resolution and duration are fixed. */
-export function buildHailuoImageRequest({ prompt, image }) {
+export function buildWanImageRequest({ prompt, image, settings }) {
+  const chosen = settings || wanSettings();
   return {
-    model: HAILUO_MODEL,
-    content: [
-      { type: "text", text: typeof prompt === "string" ? prompt : "" },
-      {
-        type: "image_url",
-        image_url: { url: image },
-        role: "first_frame",
-      },
-    ],
-    resolution: HAILUO_RESOLUTION,
-    duration: HAILUO_DURATION,
-    ratio: "adaptive",
-    generate_audio: false,
+    model: WAN_MODEL,
+    input: {
+      prompt: typeof prompt === "string" ? prompt : "",
+      img_url: image,
+    },
+    parameters: {
+      resolution: chosen.resolution,
+      duration: chosen.duration,
+      audio: chosen.audio === true,
+      prompt_extend: false,
+      watermark: false,
+    },
   };
 }
 
 export function taskIdFromCreate(data) {
   if (!data || typeof data !== "object") return "";
-  const nested = asTaskId(data.task_id) || asTaskId(data.task && data.task.id);
-  if (nested) return nested;
-  const flatId = asTaskId(data.id);
-  if (!flatId) return "";
-  if (data.status === "queued" || data.status === "running" || data.status === "succeeded") {
-    return flatId;
-  }
-  if (data.model === HAILUO_MODEL) return flatId;
-  return "";
+  if (typeof data.code === "string" && data.code && !data.output) return "";
+  return asTaskId(data.output && data.output.task_id) || asTaskId(data.task_id);
 }
 
-function hasProviderError(data) {
-  if (!data || typeof data !== "object") return true;
-  if (data.type === "error") return true;
-  if (data.error && typeof data.error === "object") return true;
-  const base = data.base_resp;
-  if (base && typeof base.status_code === "number" && base.status_code !== 0) return true;
-  return false;
+/** OSS signed URLs put the expiry in Expires as unix seconds. */
+export function videoExpiresAt(url) {
+  const playable = playableVideoUrl(url);
+  if (!playable) return null;
+  const value = new URL(playable).searchParams.get("Expires");
+  if (!value || !/^[0-9]+$/.test(value)) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric < 1e12 ? numeric * 1000 : numeric;
 }
 
-export function interpretHailuoTask(data) {
-  const task =
-    data && typeof data === "object" && data.task && typeof data.task === "object"
-      ? data.task
-      : data;
-  if (!task || typeof task !== "object") return { outcome: "retry" };
-  const status = typeof task.status === "string" ? task.status : "";
-  const taskId = asTaskId(task.id) || asTaskId(task.task_id);
-  if (status === "queued" || status === "running") {
-    return { outcome: "processing", status, taskId };
+export function interpretWanTask(data) {
+  if (!data || typeof data !== "object") return { outcome: "retry" };
+  const output = data.output && typeof data.output === "object" ? data.output : null;
+  if (!output) return { outcome: "retry" };
+  const status = typeof output.task_status === "string" ? output.task_status : "";
+  const taskId = asTaskId(output.task_id);
+  if (status === "PENDING") return { outcome: "processing", status: "queued", taskId };
+  if (status === "RUNNING") return { outcome: "processing", status: "running", taskId };
+  if (status === "SUCCEEDED") {
+    const videoUrl = playableVideoUrl(output.video_url);
+    if (!videoUrl) return { outcome: "processing", status: "running", taskId };
+    return {
+      outcome: "succeeded",
+      status: "succeeded",
+      taskId,
+      videoUrl,
+      expiresAt: videoExpiresAt(videoUrl),
+    };
   }
-  if (status === "succeeded") {
-    const videoUrl = playableVideoUrl(task.content && task.content.url);
-    if (!videoUrl) return { outcome: "processing", status, taskId };
-    return { outcome: "succeeded", status, taskId, videoUrl };
+  if (status === "FAILED" || status === "CANCELED") {
+    return { outcome: "failed", status: status.toLowerCase(), taskId };
   }
-  if (status === "failed" || status === "cancelled") {
-    return { outcome: "failed", status, taskId };
-  }
+  if (status === "UNKNOWN") return { outcome: "expired", status: "unknown", taskId };
   return { outcome: "retry" };
 }
 
-async function minimaxFetchJson({ apiKey, fetchImpl, url, method, body, timeoutMs }) {
+async function dashscopeFetchJson({ apiKey, fetchImpl, url, method, body, timeoutMs, asyncCall }) {
   const key = typeof apiKey === "string" ? apiKey.trim() : "";
   if (!key) throw generationFailed();
   const headers = { authorization: `Bearer ${key}` };
+  if (asyncCall) headers["X-DashScope-Async"] = "enable";
   const init = { method, headers, signal: AbortSignal.timeout(timeoutMs) };
   if (body !== undefined) {
     headers["content-type"] = "application/json";
@@ -160,58 +206,64 @@ async function minimaxFetchJson({ apiKey, fetchImpl, url, method, body, timeoutM
  * Create one image-to-video task. Throws generation_failed when the task
  * was not accepted. The caller reverses the Creem debit in that case.
  */
-export async function startHailuoImageToVideo({
+export async function startWanImageToVideo({
   apiKey,
   fetchImpl = fetch,
   prompt,
   image,
+  settings,
   timeoutMs = 45_000,
 }) {
   const portrait = parsePortraitDataUrl(image);
   if (portrait.error || typeof prompt !== "string" || !prompt.trim()) throw generationFailed();
-  const payload = buildHailuoImageRequest({ prompt, image: portrait.dataUrl });
-  if (payload.model !== HAILUO_MODEL || payload.resolution !== "768P" || payload.duration !== 5) {
-    throw generationFailed();
-  }
-  const { response, data } = await minimaxFetchJson({
+  const chosen = settings || wanSettings();
+  const payload = buildWanImageRequest({ prompt, image: portrait.dataUrl, settings: chosen });
+  if (payload.model !== WAN_MODEL || payload.parameters.audio !== chosen.audio) throw generationFailed();
+  const { response, data } = await dashscopeFetchJson({
     apiKey,
     fetchImpl,
-    url: `${MINIMAX_API_BASE}/v2/video_generation`,
+    url: `${chosen.baseUrl}/api/v1/services/aigc/video-generation/video-synthesis`,
     method: "POST",
     body: payload,
     timeoutMs,
+    asyncCall: true,
   });
   const taskId = taskIdFromCreate(data);
-  if (!response.ok || !taskId || hasProviderError(data)) throw generationFailed();
+  if (!response.ok || !taskId || (data && typeof data.code === "string" && data.code)) {
+    throw generationFailed();
+  }
   return {
-    provider: "minimax",
-    model: HAILUO_MODEL,
+    provider: "dashscope",
+    model: WAN_MODEL,
     status: "processing",
     taskId,
-    resolution: HAILUO_RESOLUTION,
-    duration: HAILUO_DURATION,
+    resolution: chosen.resolution,
+    duration: chosen.duration,
+    audio: chosen.audio,
   };
 }
 
 /** Query one task. Transport errors stay retryable and do not mean the video failed. */
-export async function queryHailuoTask({
+export async function queryWanTask({
   apiKey,
   fetchImpl = fetch,
   taskId,
+  settings,
   timeoutMs = 15_000,
 }) {
   const id = asTaskId(taskId);
   if (!id) return { outcome: "retry" };
+  const chosen = settings || wanSettings();
   try {
-    const { response, data } = await minimaxFetchJson({
+    const { response, data } = await dashscopeFetchJson({
       apiKey,
       fetchImpl,
-      url: `${MINIMAX_API_BASE}/v2/query/video_generation/${encodeURIComponent(id)}`,
+      url: `${chosen.baseUrl}/api/v1/tasks/${encodeURIComponent(id)}`,
       method: "GET",
       timeoutMs,
     });
     if (!response.ok) return { outcome: "retry" };
-    return interpretHailuoTask(data);
+    return interpretWanTask(data);
   } catch {
     return { outcome: "retry" };
   }

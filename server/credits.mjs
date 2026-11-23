@@ -1,15 +1,13 @@
 import { generationPermitted } from "../src/lib/moderationGate.mjs";
 import { CreemRequestError, createCreem } from "./creemApi.mjs";
 import {
-  HAILUO_DURATION,
-  HAILUO_MODEL,
-  HAILUO_RESOLUTION,
   issueVideoTicket,
   parsePortraitDataUrl,
-  queryHailuoTask,
+  queryWanTask,
   readVideoTicket,
-  startHailuoImageToVideo,
-} from "./minimax.mjs";
+  startWanImageToVideo,
+  wanSettings,
+} from "./dashscope.mjs";
 import {
   GENERATION_WALLET_NAME,
   HD_PRODUCT_ID,
@@ -428,6 +426,7 @@ export async function dispatchCredits(request, ctx) {
     path === "/v1/credits/checkout" ||
     path === "/v1/generations" ||
     path === "/v1/generations/status" ||
+    path === "/v1/generations/file" ||
     path === "/v1/creem/webhook";
   if (!known) return null;
 
@@ -451,6 +450,7 @@ export async function dispatchCredits(request, ctx) {
   if (path === "/v1/credits/checkout" && method === "POST") return handleCheckout(request, ctx);
   if (path === "/v1/generations" && method === "POST") return handlePaid(request, ctx);
   if (path === "/v1/generations/status" && method === "POST") return handleGenerationStatus(request, ctx);
+  if (path === "/v1/generations/file" && method === "GET") return handleGenerationFile(request, ctx);
   return json({ ok: false, error: "not_found" }, 404);
 }
 
@@ -589,11 +589,12 @@ async function handlePaid(request, ctx) {
     generate:
       ctx.generateImpl ||
       ((args) =>
-        startHailuoImageToVideo({
-          apiKey: ctx.minimaxApiKey || "",
-          fetchImpl: ctx.minimaxFetch || fetch,
+        startWanImageToVideo({
+          apiKey: ctx.dashscopeApiKey || "",
+          fetchImpl: ctx.dashscopeFetch || fetch,
           prompt: args.prompt,
           image: args.image,
+          settings: wanOf(ctx),
         })),
   });
 
@@ -653,16 +654,28 @@ async function handlePaid(request, ctx) {
   );
 }
 
-function videoGeneration(status, taskId, extra = {}) {
+function wanOf(ctx) {
+  return ctx.wan || wanSettings();
+}
+
+function videoGeneration(ctx, status, taskId, extra = {}) {
+  const settings = wanOf(ctx);
   return {
-    provider: "minimax",
-    model: HAILUO_MODEL,
+    provider: "dashscope",
+    model: settings.model,
     status,
     taskId,
-    resolution: HAILUO_RESOLUTION,
-    duration: HAILUO_DURATION,
+    resolution: settings.resolution,
+    duration: settings.duration,
+    audio: settings.audio,
     ...extra,
   };
+}
+
+function generationExtras(query) {
+  const extra = { videoUrl: query.videoUrl };
+  if (query.expiresAt) extra.expiresAt = new Date(query.expiresAt).toISOString();
+  return extra;
 }
 
 /**
@@ -684,26 +697,80 @@ async function handleGenerationStatus(request, ctx) {
     return ctx.json({ ok: false, error: "generation_not_found" }, 404);
   }
 
-  const query = await queryHailuoTask({
-    apiKey: ctx.minimaxApiKey || "",
-    fetchImpl: ctx.minimaxFetch || fetch,
+  const query = await queryWanTask({
+    apiKey: ctx.dashscopeApiKey || "",
+    fetchImpl: ctx.dashscopeFetch || fetch,
     taskId: ticket.taskId,
+    settings: wanOf(ctx),
   });
+  return settleVideoQuery(ctx, ready.session, ticket, query);
+}
 
+/**
+ * The DashScope mp4 link expires in about 24 hours. This same-origin download
+ * re-checks the task and streams the current file as an attachment so the
+ * customer can save it while the link is still valid.
+ */
+async function handleGenerationFile(request, ctx) {
+  if (!sessionConfigured(ctx.sessionSecret)) {
+    return ctx.json({ ok: false, error: "credits_unavailable" }, 503);
+  }
+  const ticket = await readVideoTicket(
+    ctx.sessionSecret,
+    new URL(request.url).searchParams.get("ticket") || "",
+    nowOf(ctx),
+  );
+  if (!ticket) return ctx.json({ ok: false, error: "generation_not_found" }, 404);
+  const query = await queryWanTask({
+    apiKey: ctx.dashscopeApiKey || "",
+    fetchImpl: ctx.dashscopeFetch || fetch,
+    taskId: ticket.taskId,
+    settings: wanOf(ctx),
+  });
+  if (query.outcome === "failed") {
+    try {
+      await reverseDebit(creemFor(ctx), ticket.aid, ticket.transactionId);
+    } catch {
+      return ctx.json({ ok: false, error: "refund_pending", transactionId: ticket.transactionId }, 502);
+    }
+    return ctx.json({ ok: false, error: "generation_failed", refunded: true }, 502);
+  }
+  if (query.outcome !== "succeeded") {
+    return ctx.json({ ok: false, error: query.outcome === "expired" ? "video_expired" : "video_pending" }, 404);
+  }
+  let upstream;
+  try {
+    upstream = await (ctx.videoFetch || fetch)(query.videoUrl);
+  } catch {
+    return ctx.json({ ok: false, error: "video_expired" }, 502);
+  }
+  if (!upstream.ok || !upstream.body) return ctx.json({ ok: false, error: "video_expired" }, 502);
+  const headers = new Headers();
+  headers.set("content-type", "video/mp4");
+  headers.set("content-disposition", 'attachment; filename="dollyzoom-hd.mp4"');
+  headers.set("cache-control", "private, no-store");
+  const length = upstream.headers.get("content-length");
+  if (length && /^[0-9]+$/.test(length)) headers.set("content-length", length);
+  return new Response(upstream.body, { status: 200, headers });
+}
+
+async function settleVideoQuery(ctx, session, ticket, query) {
   if (query.outcome === "succeeded") {
     return ctx.json(
       {
         ok: true,
         status: "succeeded",
-        generation: videoGeneration("succeeded", ticket.taskId, { videoUrl: query.videoUrl }),
+        generation: videoGeneration(ctx, "succeeded", ticket.taskId, generationExtras(query)),
       },
       200,
     );
   }
-
+  if (query.outcome === "expired") {
+    return ctx.json({ ok: false, error: "video_expired" }, 410);
+  }
   if (query.outcome === "failed") {
     try {
-      await reverseDebit(creemFor(ctx), ready.session.aid, ticket.transactionId);
+      await reverseDebit(creemFor(ctx), session.aid, ticket.transactionId);
     } catch {
       return ctx.json(
         {
@@ -723,14 +790,12 @@ async function handleGenerationStatus(request, ctx) {
       502,
     );
   }
-
-  const status =
-    query.status === "queued" || query.status === "running" ? query.status : "processing";
+  const status = query.status === "queued" || query.status === "running" ? query.status : "processing";
   return ctx.json(
     {
       ok: true,
       status: "processing",
-      generation: videoGeneration(status, ticket.taskId),
+      generation: videoGeneration(ctx, status, ticket.taskId),
     },
     200,
   );

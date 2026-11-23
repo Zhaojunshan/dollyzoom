@@ -5,7 +5,7 @@ import { after, beforeEach, test } from "node:test";
 import { handleRequest, resetRateLimit } from "./app.mjs";
 import { HD_PRODUCT_ID, STATIC_CHECKOUT_URL } from "./creemHost.mjs";
 import { classifyModeration, externalIdFor } from "./credits.mjs";
-import { issueVideoTicket } from "./minimax.mjs";
+import { issueVideoTicket } from "./dashscope.mjs";
 import { createProxyServer } from "./index.mjs";
 import {
   SESSION_TTL_MS,
@@ -17,9 +17,11 @@ import {
 } from "./session.mjs";
 
 const LIVE = "creem_unit_test_not_a_real_key";
-const MINIMAX_KEY = "minimax_unit_test_key_not_real";
+const DASHSCOPE_KEY = "dashscope_unit_test_key_not_real";
 const PORTRAIT = `data:image/jpeg;base64,${"A".repeat(80)}`;
-const VIDEO_URL = "https://video-product.cdn.minimax.io/inference_output/dolly.mp4";
+const WAN_TASK = "0385dc79-5ff8-4d82-bcb6-abcdef12";
+const WAN_FAILED = "0385dc79-5ff8-4d82-bcb6-failed01";
+const VIDEO_URL = "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/dolly.mp4?Expires=1893456000";
 const TEST_KEY = "creem_test_unit_only";
 const SESSION = "session_secret_0123456789";
 const WEBHOOK = "whsec_unit_test_value";
@@ -679,7 +681,7 @@ test("a paid request without a portrait does not debit", async () => {
     }),
     baseOptions({
       creemFetch: creem.fetchImpl,
-      minimaxApiKey: MINIMAX_KEY,
+      dashscopeApiKey: DASHSCOPE_KEY,
       screenImpl: async () => {
         screened += 1;
         return { decision: "allow", id: "mod_stub" };
@@ -693,9 +695,9 @@ test("a paid request without a portrait does not debit", async () => {
   assert.equal(creem.calls.length, 0);
 });
 
-test("a missing MiniMax key debits and reverses", async () => {
+test("a missing DashScope key debits and reverses", async () => {
   const creem = mockCreem(router({ balance: "3" }));
-  let minimaxCalls = 0;
+  let providerCalls = 0;
   const response = await handleRequest(
     request("/v1/generations", {
       ip: "203.0.113.72",
@@ -705,9 +707,9 @@ test("a missing MiniMax key debits and reverses", async () => {
     baseOptions({
       creemFetch: creem.fetchImpl,
       screenImpl: async () => ({ decision: "allow", id: "mod_stub" }),
-      minimaxFetch: async () => {
-        minimaxCalls += 1;
-        throw new Error("minimax should not be called without a key");
+      dashscopeFetch: async () => {
+        providerCalls += 1;
+        throw new Error("dashscope should not be called without a key");
       },
     }),
   );
@@ -716,7 +718,7 @@ test("a missing MiniMax key debits and reverses", async () => {
   assert.equal(body.error, "generation_failed");
   assert.equal(body.refunded, true);
   assert.equal(body.moderationId, "mod_stub");
-  assert.equal(minimaxCalls, 0);
+  assert.equal(providerCalls, 0);
   const reverse = creem.calls.find((call) => call.path.endsWith("/reverse"));
   assert.equal(reverse.body.transaction_id, "cct_debit");
   assert.equal(creditGrant(creem.calls).length, 0);
@@ -924,16 +926,18 @@ test("the HTTP server checks the raw webhook body", async () => {
   }
 });
 
-function mockMinimax(handler) {
+function mockDashscope(handler) {
   const calls = [];
   const fetchImpl = async (url, init = {}) => {
     const parsed = new URL(url);
     const call = {
       method: init.method || "GET",
       href: parsed.href,
+      host: parsed.host,
       path: parsed.pathname,
       body: init.body ? JSON.parse(init.body) : null,
       authorization: init.headers?.authorization || "",
+      asyncHeader: init.headers?.["X-DashScope-Async"] || "",
     };
     calls.push(call);
     const result = await handler(call);
@@ -945,22 +949,20 @@ function mockMinimax(handler) {
   return { fetchImpl, calls };
 }
 
-test("paid HD debits, starts MiniMax-H3 at 768P for 5 seconds, then polls a playable video", async () => {
+test("paid HD debits, starts wan2.6-i2v-flash at 720P for 5 silent seconds, then polls a playable video", async () => {
   const creem = mockCreem(router({ balance: "2" }));
-  const minimax = mockMinimax(async (call) => {
+  const dashscope = mockDashscope(async (call) => {
     if (call.method === "POST") {
-      return { body: { task_id: "424010985738629" } };
+      return { body: { output: { task_id: WAN_TASK, task_status: "PENDING" }, request_id: "req_create" } };
     }
     return {
       body: {
-        task: {
-          id: "424010985738629",
-          model: "MiniMax-H3",
-          status: "succeeded",
-          content: { url: VIDEO_URL },
-          resolution: "768P",
-          duration: 5,
+        output: {
+          task_id: WAN_TASK,
+          task_status: "SUCCEEDED",
+          video_url: VIDEO_URL,
         },
+        usage: { duration: 5, output_video_duration: 5, SR: 720, audio: false },
       },
     };
   });
@@ -973,8 +975,8 @@ test("paid HD debits, starts MiniMax-H3 at 768P for 5 seconds, then polls a play
     }),
     baseOptions({
       creemFetch: creem.fetchImpl,
-      minimaxApiKey: MINIMAX_KEY,
-      minimaxFetch: minimax.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: dashscope.fetchImpl,
       screenImpl: async (args) => {
         screened.push(args);
         return { decision: "allow", id: "mod_hd", object: "moderation_result" };
@@ -987,27 +989,31 @@ test("paid HD debits, starts MiniMax-H3 at 768P for 5 seconds, then polls a play
   assert.equal(startedBody.moderationId, "mod_hd");
   assert.equal(startedBody.transactionId, "cct_debit");
   assert.equal(startedBody.generation.status, "processing");
-  assert.equal(startedBody.generation.model, "MiniMax-H3");
-  assert.equal(startedBody.generation.resolution, "768P");
+  assert.equal(startedBody.generation.provider, "dashscope");
+  assert.equal(startedBody.generation.model, "wan2.6-i2v-flash");
+  assert.equal(startedBody.generation.resolution, "720P");
   assert.equal(startedBody.generation.duration, 5);
-  assert.equal(startedBody.generation.taskId, "424010985738629");
+  assert.equal(startedBody.generation.audio, false);
+  assert.equal(startedBody.generation.taskId, WAN_TASK);
   assert.equal(typeof startedBody.generation.ticket, "string");
-  assert.equal(startedText.includes(MINIMAX_KEY), false);
+  assert.equal(startedText.includes(DASHSCOPE_KEY), false);
   assert.equal(startedText.includes(PORTRAIT), false);
   assert.equal(JSON.stringify(screened[0]).includes("base64"), false);
   assert.equal(screened[0].prompt.includes("Hitchcock"), true);
-  const create = minimax.calls[0];
-  assert.equal(create.path, "/v2/video_generation");
-  assert.equal(create.authorization, `Bearer ${MINIMAX_KEY}`);
-  assert.equal(create.body.model, "MiniMax-H3");
-  assert.equal(create.body.resolution, "768P");
-  assert.equal(create.body.duration, 5);
-  assert.equal(create.body.generate_audio, false);
-  assert.equal(create.body.ratio, "adaptive");
-  assert.equal(create.body.content[0].text, screened[0].prompt);
-  assert.equal(create.body.content[1].role, "first_frame");
-  assert.equal(create.body.content[1].image_url.url, PORTRAIT);
-  assert.equal(JSON.stringify(create.body).includes("2K"), false);
+  const create = dashscope.calls[0];
+  assert.equal(create.host, "dashscope.aliyuncs.com");
+  assert.equal(create.path, "/api/v1/services/aigc/video-generation/video-synthesis");
+  assert.equal(create.authorization, `Bearer ${DASHSCOPE_KEY}`);
+  assert.equal(create.asyncHeader, "enable");
+  assert.equal(create.body.model, "wan2.6-i2v-flash");
+  assert.equal(create.body.input.prompt, screened[0].prompt);
+  assert.equal(create.body.input.img_url, PORTRAIT);
+  assert.equal(create.body.parameters.resolution, "720P");
+  assert.equal(create.body.parameters.duration, 5);
+  assert.equal(create.body.parameters.audio, false);
+  assert.equal(create.body.parameters.prompt_extend, false);
+  assert.equal(create.body.parameters.watermark, false);
+  assert.equal(JSON.stringify(create.body).includes("1080P"), false);
   const debit = creem.calls.find((call) => call.path.endsWith("/debit"));
   assert.equal(debit.body.amount, "1");
   assert.equal(debit.body.moderation_id, "mod_hd");
@@ -1022,8 +1028,8 @@ test("paid HD debits, starts MiniMax-H3 at 768P for 5 seconds, then polls a play
     }),
     baseOptions({
       creemFetch: creem.fetchImpl,
-      minimaxApiKey: MINIMAX_KEY,
-      minimaxFetch: minimax.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: dashscope.fetchImpl,
     }),
   );
   const polledBody = await polled.json();
@@ -1031,18 +1037,39 @@ test("paid HD debits, starts MiniMax-H3 at 768P for 5 seconds, then polls a play
   assert.equal(polledBody.ok, true);
   assert.equal(polledBody.status, "succeeded");
   assert.equal(polledBody.generation.videoUrl, VIDEO_URL);
-  assert.equal(minimax.calls[1].path, "/v2/query/video_generation/424010985738629");
-  assert.equal(minimax.calls[1].authorization, `Bearer ${MINIMAX_KEY}`);
-  assert.equal(JSON.stringify(polledBody).includes(MINIMAX_KEY), false);
+  assert.equal(polledBody.generation.expiresAt, "2030-01-01T00:00:00.000Z");
+  assert.equal(dashscope.calls[1].path, `/api/v1/tasks/${WAN_TASK}`);
+  assert.equal(dashscope.calls[1].authorization, `Bearer ${DASHSCOPE_KEY}`);
+  assert.equal(JSON.stringify(polledBody).includes(DASHSCOPE_KEY), false);
   assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), false);
   assert.equal(creditGrant(creem.calls).length, 0);
+
+  const file = await handleRequest(
+    request(`/v1/generations/file?ticket=${encodeURIComponent(startedBody.generation.ticket)}`, {
+      method: "GET",
+      ip: "203.0.113.90",
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: dashscope.fetchImpl,
+      videoFetch: async (url) => {
+        assert.equal(url, VIDEO_URL);
+        return new Response("mp4-bytes", { status: 200, headers: { "content-length": "9" } });
+      },
+    }),
+  );
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get("content-disposition"), 'attachment; filename="dollyzoom-hd.mp4"');
+  assert.equal(await file.text(), "mp4-bytes");
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), false);
 });
 
-test("a MiniMax create failure reverses the debit and does not return the key", async () => {
+test("a DashScope create failure reverses the debit and does not return the key", async () => {
   const creem = mockCreem(router({ balance: "2" }));
-  const minimax = mockMinimax(async () => ({
-    status: 500,
-    body: { type: "error", error: { message: `upstream ${MINIMAX_KEY}` } },
+  const dashscope = mockDashscope(async () => ({
+    status: 401,
+    body: { code: "InvalidApiKey", message: `upstream ${DASHSCOPE_KEY}`, request_id: "req_bad" },
   }));
   const response = await handleRequest(
     request("/v1/generations", {
@@ -1052,8 +1079,8 @@ test("a MiniMax create failure reverses the debit and does not return the key", 
     }),
     baseOptions({
       creemFetch: creem.fetchImpl,
-      minimaxApiKey: MINIMAX_KEY,
-      minimaxFetch: minimax.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: dashscope.fetchImpl,
       screenImpl: async () => ({ decision: "allow", id: "mod_down" }),
     }),
   );
@@ -1062,18 +1089,18 @@ test("a MiniMax create failure reverses the debit and does not return the key", 
   assert.equal(response.status, 502);
   assert.equal(body.error, "generation_failed");
   assert.equal(body.refunded, true);
-  assert.equal(text.includes(MINIMAX_KEY), false);
+  assert.equal(text.includes(DASHSCOPE_KEY), false);
   assert.equal(text.includes(PORTRAIT), false);
   assert.equal(creem.calls.some((call) => call.path.endsWith("/debit")), true);
   assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), true);
   assert.equal(creditGrant(creem.calls).length, 0);
 });
 
-test("polling a failed video reverses, and a provider blip does not", async () => {
+test("polling a failed video reverses, and a provider blip or expired task does not", async () => {
   const ticket = await issueVideoTicket(
     SESSION,
     {
-      taskId: "424010985738630",
+      taskId: WAN_FAILED,
       transactionId: "cct_debit",
       accountId: ACCOUNT,
       generationId: "gen_poll_123456",
@@ -1081,12 +1108,13 @@ test("polling a failed video reverses, and a provider blip does not", async () =
     Date.now(),
   );
   const failedCreem = mockCreem(router({ balance: "2" }));
-  const failedMinimax = mockMinimax(async () => ({
+  const failedDashscope = mockDashscope(async () => ({
     body: {
-      task: {
-        id: "424010985738630",
-        status: "failed",
-        error: { code: "1026", message: "video description contains sensitive content" },
+      output: {
+        task_id: WAN_FAILED,
+        task_status: "FAILED",
+        code: "DataInspectionFailed",
+        message: "sensitive content",
       },
     },
   }));
@@ -1098,8 +1126,8 @@ test("polling a failed video reverses, and a provider blip does not", async () =
     }),
     baseOptions({
       creemFetch: failedCreem.fetchImpl,
-      minimaxApiKey: MINIMAX_KEY,
-      minimaxFetch: failedMinimax.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: failedDashscope.fetchImpl,
     }),
   );
   const failedText = await failed.text();
@@ -1121,8 +1149,8 @@ test("polling a failed video reverses, and a provider blip does not", async () =
     }),
     baseOptions({
       creemFetch: stuck.fetchImpl,
-      minimaxApiKey: MINIMAX_KEY,
-      minimaxFetch: failedMinimax.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: failedDashscope.fetchImpl,
     }),
   );
   const pendingBody = await pending.json();
@@ -1132,8 +1160,8 @@ test("polling a failed video reverses, and a provider blip does not", async () =
   assert.equal(pendingBody.refunded, undefined);
 
   const runningCreem = mockCreem(router({ balance: "2" }));
-  const running = mockMinimax(async () => ({
-    body: { task: { id: "424010985738630", status: "running" } },
+  const running = mockDashscope(async () => ({
+    body: { output: { task_id: WAN_FAILED, task_status: "RUNNING" } },
   }));
   const still = await handleRequest(
     request("/v1/generations/status", {
@@ -1143,8 +1171,8 @@ test("polling a failed video reverses, and a provider blip does not", async () =
     }),
     baseOptions({
       creemFetch: runningCreem.fetchImpl,
-      minimaxApiKey: MINIMAX_KEY,
-      minimaxFetch: running.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: running.fetchImpl,
     }),
   );
   const stillBody = await still.json();
@@ -1155,7 +1183,7 @@ test("polling a failed video reverses, and a provider blip does not", async () =
   assert.equal(runningCreem.calls.some((call) => call.path.endsWith("/reverse")), false);
 
   const blipCreem = mockCreem(router({ balance: "2" }));
-  const blip = mockMinimax(async () => ({ status: 500, body: { type: "error" } }));
+  const blip = mockDashscope(async () => ({ status: 500, body: { code: "InternalError", message: "busy" } }));
   const retry = await handleRequest(
     request("/v1/generations/status", {
       ip: "203.0.113.86",
@@ -1164,20 +1192,41 @@ test("polling a failed video reverses, and a provider blip does not", async () =
     }),
     baseOptions({
       creemFetch: blipCreem.fetchImpl,
-      minimaxApiKey: MINIMAX_KEY,
-      minimaxFetch: blip.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: blip.fetchImpl,
     }),
   );
   assert.equal(retry.status, 200);
   assert.equal((await retry.json()).status, "processing");
   assert.equal(blipCreem.calls.length, 0);
+
+  const expiredCreem = mockCreem(router({ balance: "2" }));
+  const expired = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.91",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: expiredCreem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: mockDashscope(async () => ({
+        body: { output: { task_id: WAN_FAILED, task_status: "UNKNOWN" } },
+      })).fetchImpl,
+    }),
+  );
+  const expiredBody = await expired.json();
+  assert.equal(expired.status, 410);
+  assert.equal(expiredBody.error, "video_expired");
+  assert.equal(expiredBody.refunded, undefined);
+  assert.equal(expiredCreem.calls.length, 0);
 });
 
 test("a status poll rejects a tampered ticket and another customer's ticket", async () => {
   const ticket = await issueVideoTicket(
     SESSION,
     {
-      taskId: "424010985738629",
+      taskId: WAN_TASK,
       transactionId: "cct_debit",
       accountId: ACCOUNT,
       generationId: "gen_poll_123456",
@@ -1187,19 +1236,19 @@ test("a status poll rejects a tampered ticket and another customer's ticket", as
   const other = await issueVideoTicket(
     SESSION,
     {
-      taskId: "424010985738629",
+      taskId: WAN_TASK,
       transactionId: "cct_debit",
       accountId: "cca_other",
       generationId: "gen_poll_123456",
     },
     Date.now(),
   );
-  let minimaxCalls = 0;
+  let providerCalls = 0;
   const options = baseOptions({
     creemFetch: mockCreem(router()).fetchImpl,
-    minimaxApiKey: MINIMAX_KEY,
-    minimaxFetch: async () => {
-      minimaxCalls += 1;
+    dashscopeApiKey: DASHSCOPE_KEY,
+    dashscopeFetch: async () => {
+      providerCalls += 1;
       throw new Error("should not query");
     },
   });
@@ -1221,18 +1270,18 @@ test("a status poll rejects a tampered ticket and another customer's ticket", as
     options,
   );
   assert.equal(foreign.status, 404);
-  assert.equal(minimaxCalls, 0);
+  assert.equal(providerCalls, 0);
 });
 
-test("the free preview does not call MiniMax or debit", async () => {
-  let minimaxCalls = 0;
+test("the free preview does not call DashScope or debit", async () => {
+  let providerCalls = 0;
   const response = await handleRequest(
     request("/v1/generate", { body: { effect: "dolly_zoom", image: PORTRAIT }, ip: "203.0.113.89" }),
     baseOptions({
-      minimaxApiKey: MINIMAX_KEY,
-      minimaxFetch: async () => {
-        minimaxCalls += 1;
-        throw new Error("minimax should not run for the free preview");
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: async () => {
+        providerCalls += 1;
+        throw new Error("dashscope should not run for the free preview");
       },
       screenImpl: async () => ({ decision: "allow", id: "mod_free_video" }),
     }),
@@ -1243,17 +1292,17 @@ test("the free preview does not call MiniMax or debit", async () => {
     decision: "allow",
     moderationId: "mod_free_video",
   });
-  assert.equal(minimaxCalls, 0);
+  assert.equal(providerCalls, 0);
 });
 
-test("health reports the video provider without the MiniMax key", async () => {
+test("health reports the video provider without the DashScope key", async () => {
   const response = await handleRequest(new Request("https://proxy.example/health"), {
     ...baseOptions(),
-    minimaxApiKey: MINIMAX_KEY,
+    dashscopeApiKey: DASHSCOPE_KEY,
   });
   const text = await response.text();
   assert.equal(JSON.parse(text).video, "ready");
-  assert.equal(text.includes(MINIMAX_KEY), false);
+  assert.equal(text.includes(DASHSCOPE_KEY), false);
 });
 
 after(() => {

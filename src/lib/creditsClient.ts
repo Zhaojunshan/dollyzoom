@@ -189,7 +189,7 @@ export async function startPaidGeneration(
   }
 }
 
-/** Ask the worker whether a paid MiniMax task has a video yet. */
+/** Ask the worker whether a paid Wan task has a video yet. */
 export async function pollPaidGeneration(session: string, ticket: string): Promise<PaidResponse> {
   const origin = await proxyOrigin();
   if (!origin) return { ok: false, error: "credits_unavailable" };
@@ -208,4 +208,13 @@ export async function pollPaidGeneration(session: string, ticket: string): Promi
   } catch {
     return { ok: false, error: "generation_pending" };
   }
+}
+
+/** Same-origin download. The Worker re-checks the task and attaches the mp4. */
+export async function hdDownloadUrl(ticket: string): Promise<string> {
+  const origin = await proxyOrigin();
+  if (!origin || !ticket) return "";
+  const url = new URL(`${origin}/v1/generations/file`);
+  url.searchParams.set("ticket", ticket);
+  return url.toString();
 }

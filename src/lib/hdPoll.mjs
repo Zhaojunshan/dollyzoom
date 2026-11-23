@@ -1,6 +1,6 @@
 import { playableVideoUrl } from "./playableVideoUrl.mjs";
 
-/** MiniMax keeps a task queryable for 7 days. The signed ticket lasts 24 hours. */
+/** DashScope keeps a task queryable for 24 hours. The signed ticket lasts 24 hours. */
 export const HD_JOB_TTL_MS = 24 * 60 * 60 * 1000;
 
 const TICKET = /^[A-Za-z0-9_-]{8,}\.[0-9a-fA-F]{32,}$/;
@@ -15,6 +15,7 @@ const STOP_ERRORS = new Set([
   "image_required",
   "image_too_large",
   "image_dimensions",
+  "video_expired",
 ]);
 
 /** Drop a stored HD job that is expired, unsigned-looking, or not a playable URL. */

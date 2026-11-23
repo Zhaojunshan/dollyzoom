@@ -56,7 +56,7 @@ export default function TermsPage() {
       <p>
         You keep your rights in photos you upload. The free preview is processed
         in your browser and does not spend generation credits. Generate HD
-        uploads the photo so we can send it to MiniMax to render the short
+        uploads the photo so we can send it to Alibaba Cloud Model Studio to render the short
         video you requested. You give us a limited permission to screen the
         generation request, to transmit that photo for a paid render, and to
         show you the result. Our sample still and sample clip on the homepage

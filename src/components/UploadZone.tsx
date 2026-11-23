@@ -10,6 +10,7 @@ import {
   clearHdJob,
   clearSession,
   fetchWallet,
+  hdDownloadUrl,
   loadHdJob,
   loadSession,
   pollPaidGeneration,
@@ -54,6 +55,9 @@ function paidMessage(body: { error?: string; refunded?: boolean; transactionId?:
   if (body.error === "insufficient_credits" || body.error === "credits_needed") {
     return "Generation credits are required. Continuing to the $1.49 checkout.";
   }
+  if (body.error === "video_expired") {
+    return "This HD clip can no longer be retrieved from the provider. Links last about 24 hours. Contact support if you never received the video.";
+  }
   if (body.error === "credits_unavailable") {
     return "The HD request did not finish. Refresh this page. If a credit was used and no video appears, contact support.";
   }
@@ -73,16 +77,18 @@ function waitWhile(ms: number, isCurrent: () => boolean): Promise<boolean> {
   });
 }
 
-const HD_READY = "Your HD dolly zoom is ready. The link expires, so open or save the video if you want to keep it.";
+const HD_READY = "Your HD dolly zoom is ready. The provider link expires within 24 hours, so play it or use Save video now.";
 
 function HdVideo({
   src,
   poster,
   frame,
+  downloadHref,
 }: {
   src: string;
   poster?: string | null;
   frame: { width: number; height: number } | null;
+  downloadHref?: string;
 }) {
   return (
     <div className="w-full">
@@ -99,12 +105,10 @@ function HdVideo({
         Your HD dolly zoom
       </video>
       <a
-        href={src}
-        target="_blank"
-        rel="noopener noreferrer"
+        href={downloadHref || src}
         className="mt-2 inline-block text-xs text-accent-soft underline-offset-2 hover:underline"
       >
-        Open video
+        Save video
       </a>
     </div>
   );
@@ -126,6 +130,7 @@ export function UploadZone() {
   const [hdStatus, setHdStatus] = useState<"idle" | "starting" | "rendering" | "ready" | "error">("idle");
   const [hdVideoUrl, setHdVideoUrl] = useState<string | null>(null);
   const [hdFrame, setHdFrame] = useState<{ width: number; height: number } | null>(null);
+  const [hdDownload, setHdDownload] = useState("");
   const paidLock = useRef(false);
 
   const rememberWallet = useCallback(async (session: string) => {
@@ -153,6 +158,7 @@ export function UploadZone() {
         const decision = hdPollAction(poll);
         if (decision.action === "ready" && decision.videoUrl) {
           setHdVideoUrl(decision.videoUrl);
+          setHdDownload(await hdDownloadUrl(job.ticket));
           setHdStatus("ready");
           setPaidNote(HD_READY);
           saveHdJob({ ...job, videoUrl: decision.videoUrl });
@@ -160,7 +166,15 @@ export function UploadZone() {
           return;
         }
         if (decision.action === "stop") {
+          if (decision.error === "video_expired" && job.videoUrl) {
+            setHdVideoUrl(job.videoUrl);
+            setHdDownload(await hdDownloadUrl(job.ticket));
+            setHdStatus("ready");
+            setPaidNote(HD_READY);
+            return;
+          }
           clearHdJob();
+          setHdDownload("");
           setHdVideoUrl(null);
           setHdStatus("error");
           setPaidNote(paidMessage(poll));
@@ -194,6 +208,7 @@ export function UploadZone() {
     setHdStatus("idle");
     setHdVideoUrl(null);
     setHdFrame(null);
+    setHdDownload("");
     if (inputRef.current) inputRef.current.value = "";
   }, [previewUrl]);
 
@@ -298,10 +313,13 @@ export function UploadZone() {
     const session = loadSession();
     const timer = setTimeout(() => {
       if (stopped || run !== hdRun.current) return;
-      if (job.videoUrl) {
-        setHdVideoUrl(job.videoUrl);
-        setHdStatus("ready");
-        setPaidNote(HD_READY);
+    if (job.videoUrl) {
+      setHdVideoUrl(job.videoUrl);
+      setHdStatus("ready");
+      setPaidNote(HD_READY);
+      void hdDownloadUrl(job.ticket).then((href) => {
+        if (!stopped && run === hdRun.current && href) setHdDownload(href);
+      });
       } else if (session) {
         setPaidBusy(true);
         setHdStatus("rendering");
@@ -383,6 +401,7 @@ export function UploadZone() {
     setPaidBusy(true);
     setPaidNote(null);
     setHdVideoUrl(null);
+    setHdDownload("");
     setHdStatus("starting");
     const generationId = `gen_${crypto.randomUUID()}`;
     const session = wallet?.session || loadSession();
@@ -407,6 +426,7 @@ export function UploadZone() {
       const immediate = hdPollAction(result);
       if (immediate.action === "ready" && immediate.videoUrl) {
         setHdVideoUrl(immediate.videoUrl);
+        if (result.generation?.ticket) setHdDownload(await hdDownloadUrl(result.generation.ticket));
         setHdStatus("ready");
         setPaidNote(HD_READY);
         clearHdJob();
@@ -451,7 +471,7 @@ export function UploadZone() {
             The sample above is a finished example. A watermarked preview of
             your photo is created in this browser only after content screening.
             That preview does not spend generation credits. Generate HD uploads
-            the photo and renders a short 768P video.
+            the photo and renders a short silent 720P video.
           </p>
         </div>
 
@@ -477,7 +497,7 @@ export function UploadZone() {
           {!previewUrl && (hdVideoUrl || hdStatus === "rendering" || hdStatus === "starting") && (
             <div className="mb-5" data-hd-status={hdStatus}>
               {hdVideoUrl ? (
-                <HdVideo src={hdVideoUrl} frame={hdFrame} />
+                    <HdVideo src={hdVideoUrl} frame={hdFrame} downloadHref={hdDownload} />
               ) : (
                 <p className="text-center text-sm text-accent-soft animate-pulse">
                   Rendering the HD dolly zoom…
@@ -552,7 +572,7 @@ export function UploadZone() {
                 >
                   {status === "error" && <p className="mb-3 text-sm text-red-400">{error}</p>}
                   {hdVideoUrl ? (
-                    <HdVideo src={hdVideoUrl} poster={previewUrl} frame={hdFrame} />
+                    <HdVideo src={hdVideoUrl} poster={previewUrl} frame={hdFrame} downloadHref={hdDownload} />
                   ) : hdStatus === "starting" || hdStatus === "rendering" ? (
                     <p className="text-sm text-accent-soft animate-pulse">Rendering the HD dolly zoom…</p>
                   ) : status === "idle" ? (
