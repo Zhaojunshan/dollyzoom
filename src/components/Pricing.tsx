@@ -12,7 +12,7 @@ const plans = [
   {
     name: "Single HD",
     price: "$1.49",
-    detail: "Dolly Zoom HD Unlock · 1 HD clip · no watermark",
+    detail: "Dolly Zoom HD Unlock · Creem adds generation credits · no watermark",
     highlighted: true,
   },
 ];

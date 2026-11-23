@@ -1,10 +1,18 @@
 import { generationPermitted } from "../src/lib/moderationGate.mjs";
+import { creditsHealth, dispatchCredits } from "./credits.mjs";
+import {
+  CREEM_PRODUCTION_MODERATION_URL,
+  CREEM_SANDBOX_MODERATION_URL,
+  classifyKey,
+  moderationUrlForKey,
+} from "./creemHost.mjs";
 
-/** Production Creem host. Sandbox is selected only for an explicit test key. */
-export const CREEM_PRODUCTION_MODERATION_URL =
-  "https://api.creem.io/v1/moderation/prompt";
-export const CREEM_SANDBOX_MODERATION_URL =
-  "https://test-api.creem.io/v1/moderation/prompt";
+export {
+  CREEM_PRODUCTION_MODERATION_URL,
+  CREEM_SANDBOX_MODERATION_URL,
+  classifyKey,
+  moderationUrlForKey,
+};
 
 /**
  * Prompt used when a generation has no user-written text (upload-only
@@ -20,20 +28,6 @@ const hits = new Map();
 
 export function resetRateLimit() {
   hits.clear();
-}
-
-export function classifyKey(apiKey) {
-  const key = typeof apiKey === "string" ? apiKey.trim() : "";
-  if (!key) return "missing";
-  if (key.startsWith("creem_test_")) return "test";
-  if (key.startsWith("creem_")) return "live";
-  return "invalid";
-}
-
-export function moderationUrlForKey(apiKey) {
-  return classifyKey(apiKey) === "test"
-    ? CREEM_SANDBOX_MODERATION_URL
-    : CREEM_PRODUCTION_MODERATION_URL;
 }
 
 export function selectPrompt(body) {
@@ -77,7 +71,7 @@ export function isAllowedOrigin(origin) {
 function corsHeaders(origin) {
   const headers = {
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type",
+    "access-control-allow-headers": "content-type, authorization",
     "access-control-max-age": "86400",
     "cache-control": "no-store",
     vary: "Origin",
@@ -98,15 +92,16 @@ function json(body, status, origin) {
   });
 }
 
-function rateLimit(ip, limit) {
+function rateLimit(ip, limit, bucket = "generate") {
   const now = Date.now();
-  const recent = (hits.get(ip) || []).filter((stamp) => now - stamp < 60_000);
+  const key = `${bucket}:${ip}`;
+  const recent = (hits.get(key) || []).filter((stamp) => now - stamp < 60_000);
   if (recent.length >= limit) {
-    hits.set(ip, recent);
+    hits.set(key, recent);
     return false;
   }
   recent.push(now);
-  hits.set(ip, recent);
+  hits.set(key, recent);
   return true;
 }
 
@@ -146,6 +141,7 @@ export async function screenWithCreem({
 
 /**
  * Screen a dolly-zoom generation before any preview is returned.
+ * The free preview route does not read or debit a generation wallet.
  * Missing keys, test keys (unless explicitly allowed), deny, flag,
  * timeouts, and malformed responses all fail closed.
  */
@@ -164,8 +160,46 @@ export async function handleRequest(request, options = {}) {
   }
 
   if (request.method === "GET" && url.pathname === "/health") {
-    return json({ ok: true, key: classifyKey(apiKey) }, 200, origin);
+    return json(
+      {
+        ok: true,
+        key: classifyKey(apiKey),
+        credits: creditsHealth({
+          apiKey,
+          allowTestKey,
+          webhookSecret: options.webhookSecret || "",
+          sessionSecret: options.sessionSecret || "",
+        }),
+      },
+      200,
+      origin,
+    );
   }
+
+  const creditsResponse = await dispatchCredits(request, {
+    apiKey,
+    allowTestKey,
+    webhookSecret: options.webhookSecret || "",
+    sessionSecret: options.sessionSecret || "",
+    creditCost: options.creditCost,
+    successUrl: options.successUrl,
+    creemFetch: options.creemFetch,
+    generateImpl: options.generateImpl,
+    now: options.now,
+    originAllowed: isAllowedOrigin,
+    takeRateLimit: (ipAddress, bucket) => rateLimit(ipAddress, limit, bucket),
+    selectPrompt,
+    screen: (args) => {
+      if (options.screenImpl) return options.screenImpl({ apiKey, ...args });
+      return screenWithCreem({
+        apiKey,
+        fetchImpl: options.creemFetch || fetch,
+        ...args,
+      });
+    },
+    json: (body, status) => json(body, status, origin),
+  });
+  if (creditsResponse) return creditsResponse;
 
   if (request.method !== "POST" || url.pathname !== "/v1/generate") {
     return json({ ok: false, error: "not_found" }, 404, origin);

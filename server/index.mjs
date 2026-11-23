@@ -41,7 +41,14 @@ export function createProxyServer(options = {}) {
       response = await handleRequest(new Request(url, init), {
         apiKey,
         allowTestKey,
+        webhookSecret: options.webhookSecret ?? process.env.CREEM_WEBHOOK_SECRET ?? "",
+        sessionSecret: options.sessionSecret ?? process.env.CREEM_SESSION_SECRET ?? "",
+        creditCost: options.creditCost ?? process.env.GENERATION_CREDIT_COST,
+        successUrl: options.successUrl ?? process.env.CREEM_SUCCESS_URL,
         screenImpl: options.screenImpl,
+        generateImpl: options.generateImpl,
+        creemFetch: options.creemFetch,
+        now: options.now,
       });
     } catch {
       response = new Response(

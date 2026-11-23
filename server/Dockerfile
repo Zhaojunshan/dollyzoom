@@ -2,7 +2,7 @@
 #   docker build -f server/Dockerfile .
 FROM node:22-alpine
 WORKDIR /app
-COPY server/app.mjs server/index.mjs ./server/
+COPY server/app.mjs server/index.mjs server/creemHost.mjs server/creemApi.mjs server/session.mjs server/credits.mjs ./server/
 COPY src/lib/moderationGate.mjs ./src/lib/moderationGate.mjs
 ENV PORT=8787
 EXPOSE 8787
