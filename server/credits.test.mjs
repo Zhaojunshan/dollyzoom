@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { after, beforeEach, test } from "node:test";
 
-import { handleRequest, resetRateLimit, testGrantFlag } from "./app.mjs";
+import { FIXED_DOLLY_ZOOM_PROMPT, handleRequest, resetRateLimit, testGrantFlag } from "./app.mjs";
 import { HD_PRODUCT_ID, STATIC_CHECKOUT_URL } from "./creemHost.mjs";
 import {
   TEST_GRANT_AMOUNT,
@@ -495,7 +495,8 @@ test("paid generation checks balance, screens, debits with the moderation id, th
   assert.equal(body.transactionId, "cct_debit");
   assert.deepEqual(body.generation, { status: "stub" });
   assert.equal(seen[0].externalId, `user_${USER}:gen_gen_test_123456`);
-  assert.equal(seen[0].prompt.includes("Hitchcock"), true);
+  assert.equal(seen[0].prompt, FIXED_DOLLY_ZOOM_PROMPT);
+  assert.match(seen[0].prompt, /camera quickly pushes in/);
   const debit = creem.calls.find((call) => call.path.endsWith("/debit"));
   assert.deepEqual(debit.body, {
     amount: "1",
@@ -1009,14 +1010,17 @@ test("paid HD debits, starts wan2.6-i2v-flash at 720P for 5 silent seconds, then
   assert.equal(startedText.includes(DASHSCOPE_KEY), false);
   assert.equal(startedText.includes(PORTRAIT), false);
   assert.equal(JSON.stringify(screened[0]).includes("base64"), false);
-  assert.equal(screened[0].prompt.includes("Hitchcock"), true);
+  assert.equal(screened[0].prompt, FIXED_DOLLY_ZOOM_PROMPT);
+  assert.match(screened[0].prompt, /camera quickly pushes in/);
   const create = dashscope.calls[0];
   assert.equal(create.host, "dashscope.aliyuncs.com");
   assert.equal(create.path, "/api/v1/services/aigc/video-generation/video-synthesis");
   assert.equal(create.authorization, `Bearer ${DASHSCOPE_KEY}`);
   assert.equal(create.asyncHeader, "enable");
   assert.equal(create.body.model, "wan2.6-i2v-flash");
-  assert.equal(create.body.input.prompt, screened[0].prompt);
+  assert.equal(create.body.input.prompt, FIXED_DOLLY_ZOOM_PROMPT);
+  assert.match(create.body.input.prompt, /lens zooms wider/);
+  assert.match(create.body.input.prompt, /background perspective stretches and recedes strongly/);
   assert.equal(create.body.input.img_url, PORTRAIT);
   assert.equal(create.body.parameters.resolution, "720P");
   assert.equal(create.body.parameters.duration, 5);
