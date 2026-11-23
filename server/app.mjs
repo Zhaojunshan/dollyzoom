@@ -15,6 +15,11 @@ export {
   moderationUrlForKey,
 };
 
+/** Plain-text Worker var. Only the exact string "1" opens the temporary grant. */
+export function testGrantFlag(value) {
+  return value === "1";
+}
+
 /**
  * Prompt used when a generation has no user-written text (upload-only
  * dolly zoom). Creem bills repeated identical prompts at 0 units.
@@ -161,21 +166,19 @@ export async function handleRequest(request, options = {}) {
   }
 
   if (request.method === "GET" && url.pathname === "/health") {
-    return json(
-      {
-        ok: true,
-        key: classifyKey(apiKey),
-        credits: creditsHealth({
-          apiKey,
-          allowTestKey,
-          webhookSecret: options.webhookSecret || "",
-          sessionSecret: options.sessionSecret || "",
-        }),
-        video: dashscopeConfigured(options.dashscopeApiKey || "") ? "ready" : "unconfigured",
-      },
-      200,
-      origin,
-    );
+    const health = {
+      ok: true,
+      key: classifyKey(apiKey),
+      credits: creditsHealth({
+        apiKey,
+        allowTestKey,
+        webhookSecret: options.webhookSecret || "",
+        sessionSecret: options.sessionSecret || "",
+      }),
+      video: dashscopeConfigured(options.dashscopeApiKey || "") ? "ready" : "unconfigured",
+    };
+    if (options.testGrantEnabled === true) health.testGrant = true;
+    return json(health, 200, origin);
   }
 
   const creditsResponse = await dispatchCredits(request, {
@@ -198,8 +201,9 @@ export async function handleRequest(request, options = {}) {
       region: options.dashscopeRegion,
     }),
     now: options.now,
+    testGrantEnabled: options.testGrantEnabled === true,
     originAllowed: isAllowedOrigin,
-    takeRateLimit: (ipAddress, bucket) => rateLimit(ipAddress, limit, bucket),
+    takeRateLimit: (ipAddress, bucket, cap) => rateLimit(ipAddress, cap ?? limit, bucket),
     selectPrompt,
     screen: (args) => {
       if (options.screenImpl) return options.screenImpl({ apiKey, ...args });

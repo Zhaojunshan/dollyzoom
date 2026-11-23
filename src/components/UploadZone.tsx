@@ -7,8 +7,10 @@ import { CheckoutLink } from "@/components/CheckoutLink";
 import { DollyPreview } from "@/components/DollyPreview";
 import {
   claimPurchase,
+  claimTestGrant,
   clearHdJob,
   clearSession,
+  fetchTestGrantEnabled,
   fetchWallet,
   hdDownloadUrl,
   loadHdJob,
@@ -127,6 +129,9 @@ export function UploadZone() {
   const [walletLabel, setWalletLabel] = useState("Checking generation wallet…");
   const [paidNote, setPaidNote] = useState<string | null>(null);
   const [paidBusy, setPaidBusy] = useState(false);
+  const [testGrant, setTestGrant] = useState(false);
+  const [grantBusy, setGrantBusy] = useState(false);
+  const grantLock = useRef(false);
   const [hdStatus, setHdStatus] = useState<"idle" | "starting" | "rendering" | "ready" | "error">("idle");
   const [hdVideoUrl, setHdVideoUrl] = useState<string | null>(null);
   const [hdFrame, setHdFrame] = useState<{ width: number; height: number } | null>(null);
@@ -302,6 +307,41 @@ export function UploadZone() {
       cancel = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    fetchTestGrantEnabled().then((enabled) => {
+      if (!cancel) setTestGrant(enabled);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  const handleTestGrant = async () => {
+    if (grantLock.current) return;
+    grantLock.current = true;
+    setGrantBusy(true);
+    setPaidNote(null);
+    try {
+      const next = await claimTestGrant();
+      saveSession(next.session);
+      setWallet(next);
+      setWalletLabel(`${next.balance} credits`);
+      setPaidNote(
+        next.capped
+          ? "The test-credit limit is reached. This balance is unchanged."
+          : next.granted
+            ? "2 test credits are on this wallet. Upload a photo, then press Generate HD."
+            : "Test credits are already on this wallet. Upload a photo, then press Generate HD.",
+      );
+    } catch {
+      setPaidNote("Test credits were not added. Please try again.");
+    } finally {
+      grantLock.current = false;
+      setGrantBusy(false);
+    }
+  };
 
   useEffect(() => {
     const job = loadHdJob();
@@ -481,13 +521,26 @@ export function UploadZone() {
               Generation wallet: <span className="font-medium text-foreground">{walletLabel}</span>
               {wallet ? ` · HD uses ${wallet.cost} ${wallet.cost === "1" ? "credit" : "credits"}` : ""}
             </p>
-            <button
-              type="button"
-              onClick={refreshWallet}
-              className="text-xs text-muted underline-offset-2 hover:text-foreground hover:underline"
-            >
-              Refresh balance
-            </button>
+            <div className="flex items-center gap-3">
+              {testGrant ? (
+                <button
+                  type="button"
+                  onClick={handleTestGrant}
+                  disabled={grantBusy}
+                  data-test-grant="1"
+                  className="h-8 rounded-full border border-dashed border-accent/60 px-3 text-xs font-semibold text-accent-soft hover:bg-accent/10 disabled:opacity-50"
+                >
+                  {grantBusy ? "Adding 2 test credits…" : "Add 2 test credits"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={refreshWallet}
+                className="text-xs text-muted underline-offset-2 hover:text-foreground hover:underline"
+              >
+                Refresh balance
+              </button>
+            </div>
             {paidNote && (
               <p className="w-full text-xs text-muted" data-paid-note="1">
                 {paidNote}

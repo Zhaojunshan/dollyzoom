@@ -2,11 +2,21 @@ import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
 import { after, beforeEach, test } from "node:test";
 
-import { handleRequest, resetRateLimit } from "./app.mjs";
+import { handleRequest, resetRateLimit, testGrantFlag } from "./app.mjs";
 import { HD_PRODUCT_ID, STATIC_CHECKOUT_URL } from "./creemHost.mjs";
-import { classifyModeration, externalIdFor } from "./credits.mjs";
+import {
+  TEST_GRANT_AMOUNT,
+  TEST_GRANT_EMAIL,
+  TEST_GRANT_EXTERNAL_ID,
+  TEST_GRANT_IP_LIMIT,
+  TEST_GRANT_MAX,
+  TEST_GRANT_REFERENCE,
+  classifyModeration,
+  externalIdFor,
+} from "./credits.mjs";
 import { issueVideoTicket } from "./dashscope.mjs";
 import { createProxyServer } from "./index.mjs";
+import worker from "./worker.mjs";
 import {
   SESSION_TTL_MS,
   hmacSha256Hex,
@@ -1303,6 +1313,374 @@ test("health reports the video provider without the DashScope key", async () => 
   const text = await response.text();
   assert.equal(JSON.parse(text).video, "ready");
   assert.equal(text.includes(DASHSCOPE_KEY), false);
+});
+
+const PROMO_CUSTOMER = "cust_promo";
+const PROMO_ACCOUNT = "cca_promo";
+
+function promoState(initial = {}) {
+  return {
+    customer: initial.customer ?? null,
+    accounts: initial.accounts ?? [],
+    transactions: initial.transactions ?? [],
+    balance: initial.balance ?? "0",
+    holdBalance: initial.holdBalance === true,
+  };
+}
+
+function promoRouter(state) {
+  return async (call) => {
+    const params = new URLSearchParams(call.search);
+    if (call.method === "GET" && call.path === "/v1/customers") {
+      if (!state.customer || (params.get("customer_id") && params.get("customer_id") !== state.customer.id)) {
+        return { status: 404, body: { error: { code: "not_found", message: "missing" } } };
+      }
+      return { body: state.customer };
+    }
+    if (call.method === "POST" && call.path === "/v1/customers") {
+      state.customer = {
+        id: state.customer?.id || PROMO_CUSTOMER,
+        email: call.body.email,
+        external_id: call.body.external_id,
+      };
+      return { body: state.customer };
+    }
+    if (call.method === "PATCH" && call.path === "/v1/customers") {
+      state.customer = { ...state.customer, external_id: call.body.external_id };
+      return { body: state.customer };
+    }
+    if (call.method === "GET" && call.path === "/v1/customer-credits/accounts") {
+      return { body: { object: "list", data: state.accounts, has_more: false } };
+    }
+    if (call.method === "POST" && call.path === "/v1/customer-credits/accounts") {
+      const created = {
+        id: PROMO_ACCOUNT,
+        customer_id: call.body.customer_id,
+        name: call.body.name,
+        unit_label: call.body.unit_label,
+        status: "active",
+      };
+      state.accounts = [created];
+      return { status: 201, body: created };
+    }
+    if (call.method === "GET" && call.path === "/v1/customer-credits/transactions") {
+      return { body: { object: "list", data: state.transactions, has_more: false } };
+    }
+    if (call.method === "POST" && call.path === `/v1/customer-credits/accounts/${PROMO_ACCOUNT}/credit`) {
+      const tx = {
+        id: `cct_${state.transactions.length + 1}`,
+        reference: call.body.reference,
+        idempotency_key: call.body.idempotency_key,
+        reversal_of: null,
+        entries: [{ side: "credit", amount: call.body.amount, account_id: PROMO_ACCOUNT }],
+      };
+      state.transactions.push(tx);
+      if (!state.holdBalance) {
+        state.balance = String(BigInt(state.balance) + BigInt(call.body.amount));
+      }
+      return { status: 201, body: tx };
+    }
+    if (call.method === "GET" && call.path === `/v1/customer-credits/accounts/${PROMO_ACCOUNT}/balance`) {
+      return { body: { balance: state.balance } };
+    }
+    return { status: 500, body: { error: { code: "unexpected", message: `${call.method} ${call.path}` } } };
+  };
+}
+
+function grantOptions(creem, extra = {}) {
+  return baseOptions({ testGrantEnabled: true, creemFetch: creem.fetchImpl, ...extra });
+}
+
+test("test grant flag is only the exact string 1", () => {
+  assert.equal(testGrantFlag("1"), true);
+  assert.equal(testGrantFlag("0"), false);
+  assert.equal(testGrantFlag("true"), false);
+  assert.equal(testGrantFlag(" 1"), false);
+  assert.equal(testGrantFlag(undefined), false);
+});
+
+test("test grant is absent unless enabled", async () => {
+  const creem = mockCreem(promoRouter(promoState()));
+  const hidden = await handleRequest(
+    request("/v1/credits/test-grant", {
+      ip: "203.0.113.120",
+      body: { amount: "100", customer_id: "cust_evil", email: "attacker@example.com" },
+    }),
+    baseOptions({ creemFetch: creem.fetchImpl }),
+  );
+  assert.equal(hidden.status, 404);
+  assert.equal((await hidden.json()).error, "not_found");
+  const explicitOff = await handleRequest(
+    request("/v1/credits/test-grant", { ip: "203.0.113.121", body: {} }),
+    baseOptions({ testGrantEnabled: false, creemFetch: creem.fetchImpl }),
+  );
+  assert.equal(explicitOff.status, 404);
+  assert.equal(creem.calls.length, 0);
+
+  const health = await handleRequest(new Request("https://proxy.example/health"), baseOptions());
+  const healthBody = await health.json();
+  assert.equal(healthBody.testGrant, undefined);
+  assert.equal(Object.hasOwn(healthBody, "testGrant"), false);
+});
+
+test("enabled test grant creates the customer, grants 2, and issues a session", async () => {
+  const state = promoState();
+  const creem = mockCreem(promoRouter(state));
+  const response = await handleRequest(
+    request("/v1/credits/test-grant", {
+      ip: "203.0.113.122",
+      body: { amount: "100", customer_id: "cust_evil", email: "attacker@example.com" },
+    }),
+    grantOptions(creem),
+  );
+  const text = await response.text();
+  const body = JSON.parse(text);
+  assert.equal(response.status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.granted, true);
+  assert.equal(body.balance, TEST_GRANT_AMOUNT);
+  assert.equal(body.cost, "1");
+  assert.equal(body.unit, "credits");
+  assert.equal(body.email, undefined);
+  assert.equal(text.includes(LIVE), false);
+  assert.equal(text.includes(SESSION), false);
+  assert.equal(text.includes(WEBHOOK), false);
+  assert.equal(text.includes(TEST_GRANT_EMAIL), false);
+  assert.equal(text.includes("attacker@example.com"), false);
+  assert.equal(text.includes("cust_evil"), false);
+  const session = await readSession(SESSION, body.session);
+  assert.equal(session.uid, TEST_GRANT_EXTERNAL_ID);
+  assert.equal(session.cid, PROMO_CUSTOMER);
+  assert.equal(session.aid, PROMO_ACCOUNT);
+  assert.deepEqual(
+    creem.calls.map((call) => `${call.method} ${call.path}`),
+    [
+      "GET /v1/customers",
+      "POST /v1/customers",
+      "GET /v1/customers",
+      "GET /v1/customer-credits/accounts",
+      "POST /v1/customer-credits/accounts",
+      "GET /v1/customer-credits/transactions",
+      `GET /v1/customer-credits/accounts/${PROMO_ACCOUNT}/balance`,
+      `POST /v1/customer-credits/accounts/${PROMO_ACCOUNT}/credit`,
+      `GET /v1/customer-credits/accounts/${PROMO_ACCOUNT}/balance`,
+    ],
+  );
+  assert.equal(creem.calls[0].search, `?email=${encodeURIComponent(TEST_GRANT_EMAIL)}`);
+  assert.deepEqual(creem.calls[1].body, {
+    email: TEST_GRANT_EMAIL,
+    external_id: TEST_GRANT_EXTERNAL_ID,
+  });
+  assert.equal(creem.calls[2].search, `?customer_id=${PROMO_CUSTOMER}`);
+  assert.deepEqual(creem.calls[4].body, {
+    customer_id: PROMO_CUSTOMER,
+    name: "generation",
+    unit_label: "credits",
+  });
+  assert.equal("initial_balance" in creem.calls[4].body, false);
+  assert.equal(creem.calls[5].search, `?reference=${encodeURIComponent(TEST_GRANT_REFERENCE)}`);
+  assert.deepEqual(creditGrant(creem.calls).map((call) => call.body), [
+    {
+      amount: TEST_GRANT_AMOUNT,
+      reference: TEST_GRANT_REFERENCE,
+      idempotency_key: `${TEST_GRANT_REFERENCE}_1`,
+    },
+  ]);
+  assert.equal(creem.calls.every((call) => call.host === "api.creem.io"), true);
+  assert.equal(creem.calls.every((call) => call.apiKey === LIVE), true);
+  assert.equal(creem.calls.some((call) => call.path === "/v1/checkouts"), false);
+  assert.equal(HD_PRODUCT_ID, "prod_w9pGaP1bfoaF20iNiGXKt");
+
+  const again = await handleRequest(
+    request("/v1/credits/test-grant", { ip: "203.0.113.122", body: {} }),
+    grantOptions(creem),
+  );
+  const second = await again.json();
+  assert.equal(again.status, 200);
+  assert.equal(second.ok, true);
+  assert.equal(second.granted, false);
+  assert.equal(second.balance, TEST_GRANT_AMOUNT);
+  assert.equal((await readSession(SESSION, second.session)).uid, TEST_GRANT_EXTERNAL_ID);
+  assert.equal(creditGrant(creem.calls).length, 1);
+  assert.equal(creem.calls.filter((call) => call.method === "POST" && call.path === "/v1/customers").length, 1);
+});
+
+test("test grant keeps an existing external id and patches only a missing one", async () => {
+  const kept = promoState({
+    customer: { id: PROMO_CUSTOMER, email: TEST_GRANT_EMAIL, external_id: "dzu_keep_real_01" },
+    accounts: [
+      {
+        id: PROMO_ACCOUNT,
+        customer_id: PROMO_CUSTOMER,
+        name: "generation",
+        status: "active",
+        unit_label: "credits",
+      },
+    ],
+  });
+  const keepCreem = mockCreem(promoRouter(kept));
+  const keep = await handleRequest(
+    request("/v1/credits/test-grant", { ip: "203.0.113.123", body: {} }),
+    grantOptions(keepCreem),
+  );
+  assert.equal(keep.status, 200);
+  assert.equal((await readSession(SESSION, (await keep.json()).session)).uid, "dzu_keep_real_01");
+  assert.equal(keepCreem.calls.some((call) => call.method === "PATCH"), false);
+  assert.equal(keepCreem.calls.some((call) => call.method === "POST" && call.path === "/v1/customers"), false);
+
+  const blank = promoState({
+    customer: { id: PROMO_CUSTOMER, email: TEST_GRANT_EMAIL, external_id: "" },
+    accounts: [
+      {
+        id: PROMO_ACCOUNT,
+        customer_id: PROMO_CUSTOMER,
+        name: "generation",
+        status: "active",
+        unit_label: "credits",
+      },
+    ],
+  });
+  const patchCreem = mockCreem(promoRouter(blank));
+  const patched = await handleRequest(
+    request("/v1/credits/test-grant", { ip: "203.0.113.124", body: {} }),
+    grantOptions(patchCreem),
+  );
+  assert.equal(patched.status, 200);
+  assert.equal(patchCreem.calls.find((call) => call.method === "PATCH").body.external_id, TEST_GRANT_EXTERNAL_ID);
+  assert.equal((await readSession(SESSION, (await patched.json()).session)).uid, TEST_GRANT_EXTERNAL_ID);
+});
+
+test("test grant stops after the Creem transaction cap", async () => {
+  const state = promoState({ holdBalance: true, balance: "0" });
+  const creem = mockCreem(promoRouter(state));
+  for (let n = 1; n <= TEST_GRANT_MAX; n += 1) {
+    const response = await handleRequest(
+      request("/v1/credits/test-grant", { ip: "203.0.113.125", body: {} }),
+      grantOptions(creem),
+    );
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.granted, true);
+    assert.equal(body.balance, "0");
+  }
+  assert.deepEqual(
+    creditGrant(creem.calls).map((call) => call.body.idempotency_key),
+    Array.from({ length: TEST_GRANT_MAX }, (_, index) => `${TEST_GRANT_REFERENCE}_${index + 1}`),
+  );
+  assert.deepEqual(
+    creditGrant(creem.calls).map((call) => call.body.amount),
+    Array.from({ length: TEST_GRANT_MAX }, () => TEST_GRANT_AMOUNT),
+  );
+  const blocked = await handleRequest(
+    request("/v1/credits/test-grant", { ip: "203.0.113.125", body: { amount: "100" } }),
+    grantOptions(creem),
+  );
+  const capped = await blocked.json();
+  assert.equal(blocked.status, 429);
+  assert.equal(capped.error, "test_grant_cap");
+  assert.equal(capped.granted, false);
+  assert.ok(await readSession(SESSION, capped.session));
+  assert.equal(creditGrant(creem.calls).length, TEST_GRANT_MAX);
+});
+
+test("test grant rate limit and a foreign origin never call Creem", async () => {
+  const creem = mockCreem(promoRouter(promoState()));
+  const options = grantOptions(creem, { sessionSecret: "" });
+  for (let n = 0; n < TEST_GRANT_IP_LIMIT; n += 1) {
+    const response = await handleRequest(
+      request("/v1/credits/test-grant", { ip: "203.0.113.126", body: {} }),
+      options,
+    );
+    assert.equal(response.status, 503);
+  }
+  const limited = await handleRequest(
+    request("/v1/credits/test-grant", { ip: "203.0.113.126", body: {} }),
+    options,
+  );
+  assert.equal(limited.status, 429);
+  assert.equal((await limited.json()).error, "credits_unavailable");
+
+  const foreign = await handleRequest(
+    request("/v1/credits/test-grant", {
+      origin: "https://evil.example",
+      ip: "203.0.113.127",
+      body: {},
+    }),
+    grantOptions(creem),
+  );
+  assert.equal(foreign.status, 403);
+  assert.equal(foreign.headers.get("access-control-allow-origin"), null);
+  assert.equal(creem.calls.length, 0);
+});
+
+test("health advertises the test grant only while it is enabled", async () => {
+  const off = await handleRequest(new Request("https://proxy.example/health"), baseOptions());
+  assert.equal(JSON.stringify(await off.json()).includes("testGrant"), false);
+  const on = await handleRequest(new Request("https://proxy.example/health"), baseOptions({ testGrantEnabled: true }));
+  const text = await on.text();
+  assert.deepEqual(JSON.parse(text), {
+    ok: true,
+    key: "live",
+    credits: "ready",
+    video: "unconfigured",
+    testGrant: true,
+  });
+  assert.equal(text.includes(LIVE), false);
+  assert.equal(text.includes(SESSION), false);
+  assert.equal(text.includes(WEBHOOK), false);
+  assert.equal(text.includes(TEST_GRANT_EMAIL), false);
+});
+
+test("the worker and node server hide test grant unless the flag is 1", async () => {
+  const call = (env) =>
+    worker.fetch(
+      new Request("https://proxy.example/v1/credits/test-grant", {
+        method: "POST",
+        headers: { origin: "https://dollyzoom.top", "content-type": "application/json" },
+        body: "{}",
+      }),
+      env,
+    );
+  assert.equal((await call({})).status, 404);
+  assert.equal((await call({ TEST_GRANT_ENABLED: "0" })).status, 404);
+  assert.equal((await call({ TEST_GRANT_ENABLED: "true" })).status, 404);
+  assert.equal((await call({ TEST_GRANT_ENABLED: "1 " })).status, 404);
+  const unconfigured = await call({ TEST_GRANT_ENABLED: "1" });
+  assert.equal(unconfigured.status, 503);
+  assert.equal((await unconfigured.json()).error, "credits_unavailable");
+
+  const hidden = await worker.fetch(new Request("https://proxy.example/health"), {});
+  assert.equal(Object.hasOwn(await hidden.json(), "testGrant"), false);
+  const shown = await worker.fetch(new Request("https://proxy.example/health"), {
+    TEST_GRANT_ENABLED: "1",
+    CREEM_API_KEY: LIVE,
+    CREEM_SESSION_SECRET: SESSION,
+    CREEM_WEBHOOK_SECRET: WEBHOOK,
+  });
+  const shownText = await shown.text();
+  assert.equal(JSON.parse(shownText).testGrant, true);
+  assert.equal(shownText.includes(LIVE), false);
+  assert.equal(shownText.includes(SESSION), false);
+  assert.equal(shownText.includes(WEBHOOK), false);
+
+  const server = createProxyServer({
+    apiKey: "",
+    sessionSecret: SESSION,
+    webhookSecret: WEBHOOK,
+    port: 0,
+    testGrantEnabled: true,
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  try {
+    const open = await fetch(`http://127.0.0.1:${port}/v1/credits/test-grant`, { method: "POST" });
+    assert.equal(open.status, 503);
+    const health = await fetch(`http://127.0.0.1:${port}/health`);
+    assert.equal((await health.json()).testGrant, true);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 after(() => {

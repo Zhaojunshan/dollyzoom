@@ -33,6 +33,20 @@ const CUSTOMER_ID = /^cust_[A-Za-z0-9]+$/;
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 /**
+ * Temporary Generate HD faucet. The route exists only when the Worker var
+ * TEST_GRANT_ENABLED is exactly "1". Credits stay in Creem's generation ledger.
+ * One promo customer, at most TEST_GRANT_MAX grants of TEST_GRANT_AMOUNT.
+ */
+export const TEST_GRANT_AMOUNT = "2";
+export const TEST_GRANT_MAX = 5;
+export const TEST_GRANT_IP_LIMIT = 8;
+export const TEST_GRANT_REFERENCE = "dollyzoom_promo_hd";
+export const TEST_GRANT_EXTERNAL_ID = "dzu_owner_hd_test";
+export const TEST_GRANT_EMAIL = "hd-test@dollyzoom.top";
+
+let testGrantTail = Promise.resolve();
+
+/**
  * This site has no accounts. Creem checkout collects the email and creates the
  * customer. We then set external_id (our user id) and make sure a generation
  * wallet exists. Purchased credits are applied by Creem, never by this code.
@@ -417,13 +431,178 @@ function neededBody() {
   };
 }
 
+function withTestGrantLock(task) {
+  const run = testGrantTail.then(task, task);
+  testGrantTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+function testGrantSlot(key) {
+  const prefix = `${TEST_GRANT_REFERENCE}_`;
+  if (typeof key !== "string" || !key.startsWith(prefix)) return 0;
+  const rest = key.slice(prefix.length);
+  if (!/^[1-5]$/.test(rest)) return 0;
+  const slot = Number(rest);
+  return slot >= 1 && slot <= TEST_GRANT_MAX ? slot : 0;
+}
+
+/** Slots already credited for this promo, read from Creem. Fail closed on an unexpected row. */
+function testGrantSlots(list, accountId) {
+  if (!list || !Array.isArray(list.data) || list.has_more === true) {
+    throw new CreemRequestError(502, "credits_unavailable");
+  }
+  const slots = new Set();
+  for (const row of list.data) {
+    if (!row || row.reference !== TEST_GRANT_REFERENCE || row.reversal_of) continue;
+    const slot = testGrantSlot(row.idempotency_key);
+    if (!slot) throw new CreemRequestError(502, "credits_unavailable");
+    const entries = Array.isArray(row.entries) ? row.entries : null;
+    if (!entries || entries.length === 0) throw new CreemRequestError(502, "credits_unavailable");
+    const credit = entries.some((entry) => {
+      if (!entry || entry.side !== "credit") return false;
+      if (String(entry.amount) !== TEST_GRANT_AMOUNT) return false;
+      if (typeof entry.account_id === "string" && entry.account_id !== accountId) return false;
+      return true;
+    });
+    if (!credit) throw new CreemRequestError(502, "credits_unavailable");
+    slots.add(slot);
+  }
+  return slots;
+}
+
+async function findOrCreateTestCustomer(creem) {
+  const emailQuery = `/v1/customers?email=${encodeURIComponent(TEST_GRANT_EMAIL)}`;
+  try {
+    const existing = await creem.get(emailQuery);
+    if (!existing?.id || !CUSTOMER_ID.test(existing.id)) {
+      throw new CreemRequestError(502, "credits_unavailable");
+    }
+    return existing.id;
+  } catch (error) {
+    if (!(error instanceof CreemRequestError) || error.status !== 404) throw error;
+  }
+  // Lookup first. Creating an email that already exists replaces external_id.
+  const created = await creem.post("/v1/customers", {
+    email: TEST_GRANT_EMAIL,
+    external_id: TEST_GRANT_EXTERNAL_ID,
+  });
+  if (!created?.id || !CUSTOMER_ID.test(created.id)) {
+    throw new CreemRequestError(502, "credits_unavailable");
+  }
+  return created.id;
+}
+
+async function listTestGrantTransactions(creem) {
+  try {
+    return await creem.get(
+      `/v1/customer-credits/transactions?reference=${encodeURIComponent(TEST_GRANT_REFERENCE)}`,
+    );
+  } catch (error) {
+    if (error instanceof CreemRequestError && error.status === 404) {
+      return { object: "list", data: [], has_more: false };
+    }
+    throw error;
+  }
+}
+
+async function sessionPayload(ctx, bound, balance, cost, extra) {
+  const session = await issueSession(
+    ctx.sessionSecret,
+    { uid: bound.externalId, cid: bound.customerId, aid: bound.accountId },
+    nowOf(ctx),
+  );
+  return {
+    session,
+    balance,
+    cost,
+    unit: bound.unit,
+    ...extra,
+  };
+}
+
+/**
+ * Ensure the promo customer and generation wallet, then credit exactly 2.
+ * The request body is ignored so a caller cannot pick the customer or the amount.
+ * A repeat is idempotent while the wallet still has those credits. Creem's
+ * transaction list caps successful grants; this process does not keep a balance.
+ */
+async function issueTestGrant(ctx, cost) {
+  try {
+    const creem = creemFor(ctx);
+    const customerId = await findOrCreateTestCustomer(creem);
+    const bound = await ensureGenerationCustomer(creem, customerId, TEST_GRANT_EXTERNAL_ID);
+    const slots = testGrantSlots(await listTestGrantTransactions(creem), bound.accountId);
+    const balanceNow = await readBalance(creem, bound.accountId);
+    const funded = slots.size > 0 && BigInt(balanceNow) >= BigInt(TEST_GRANT_AMOUNT);
+    if (funded) {
+      return ctx.json(
+        {
+          ok: true,
+          ...(await sessionPayload(ctx, bound, balanceNow, cost, { granted: false })),
+        },
+        200,
+      );
+    }
+    const used = slots.size > 0 ? Math.max(...slots) : 0;
+    if (slots.size >= TEST_GRANT_MAX || used >= TEST_GRANT_MAX) {
+      return ctx.json(
+        {
+          ok: false,
+          error: "test_grant_cap",
+          ...(await sessionPayload(ctx, bound, balanceNow, cost, { granted: false })),
+        },
+        429,
+      );
+    }
+    const credited = await creem.post(
+      `/v1/customer-credits/accounts/${encodeURIComponent(bound.accountId)}/credit`,
+      {
+        amount: TEST_GRANT_AMOUNT,
+        reference: TEST_GRANT_REFERENCE,
+        idempotency_key: `${TEST_GRANT_REFERENCE}_${used + 1}`,
+      },
+    );
+    if (!credited?.id || !String(credited.id).startsWith("cct_")) {
+      throw new CreemRequestError(502, "credits_unavailable");
+    }
+    const balance = await readBalance(creem, bound.accountId);
+    return ctx.json(
+      {
+        ok: true,
+        ...(await sessionPayload(ctx, bound, balance, cost, { granted: true })),
+      },
+      200,
+    );
+  } catch (error) {
+    const code = error instanceof CreemRequestError ? error.code : "credits_unavailable";
+    console.error("test_grant_failed", code || "credits_unavailable");
+    return ctx.json({ ok: false, error: "credits_unavailable" }, 503);
+  }
+}
+
+async function handleTestGrant(request, ctx) {
+  if (!ctx.takeRateLimit(clientIp(request), "test-grant", TEST_GRANT_IP_LIMIT)) {
+    return ctx.json({ ok: false, error: "credits_unavailable" }, 429);
+  }
+  const cost = parseCreditCost(ctx.creditCost);
+  if (!keyAllowed(ctx.apiKey, ctx.allowTestKey) || !sessionConfigured(ctx.sessionSecret) || !cost) {
+    return ctx.json({ ok: false, error: "credits_unavailable" }, 503);
+  }
+  return withTestGrantLock(() => issueTestGrant(ctx, cost));
+}
+
 export async function dispatchCredits(request, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
+  const testGrant = ctx.testGrantEnabled === true;
   const known =
     path === "/v1/credits" ||
     path === "/v1/credits/claim" ||
     path === "/v1/credits/checkout" ||
+    (testGrant && path === "/v1/credits/test-grant") ||
     path === "/v1/generations" ||
     path === "/v1/generations/status" ||
     path === "/v1/generations/file" ||
@@ -448,6 +627,7 @@ export async function dispatchCredits(request, ctx) {
   if (path === "/v1/credits" && method === "GET") return handleBalance(request, ctx);
   if (path === "/v1/credits/claim" && method === "POST") return handleClaim(request, ctx);
   if (path === "/v1/credits/checkout" && method === "POST") return handleCheckout(request, ctx);
+  if (path === "/v1/credits/test-grant" && method === "POST") return handleTestGrant(request, ctx);
   if (path === "/v1/generations" && method === "POST") return handlePaid(request, ctx);
   if (path === "/v1/generations/status" && method === "POST") return handleGenerationStatus(request, ctx);
   if (path === "/v1/generations/file" && method === "GET") return handleGenerationFile(request, ctx);
