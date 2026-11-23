@@ -12,7 +12,7 @@
  */
 import http from "node:http";
 
-import { classifyKey, handleRequest } from "./app.mjs";
+import { classifyKey, handleRequest, testGrantFlag } from "./app.mjs";
 import { dashscopeConfigured } from "./dashscope.mjs";
 
 import { pathToFileURL } from "node:url";
@@ -56,6 +56,8 @@ export function createProxyServer(options = {}) {
         generateImpl: options.generateImpl,
         creemFetch: options.creemFetch,
         now: options.now,
+        testGrantEnabled:
+          options.testGrantEnabled ?? testGrantFlag(process.env.TEST_GRANT_ENABLED),
       });
     } catch {
       response = new Response(

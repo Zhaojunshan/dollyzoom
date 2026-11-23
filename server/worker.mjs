@@ -11,8 +11,10 @@
  * Use a live key from Creem Dashboard → Developers → API Keys.
  * DASHSCOPE_API_KEY is the China (Beijing) Bailian key. Paid HD will not
  * render without it. Do not put secret values in wrangler.toml.
+ * TEST_GRANT_ENABLED is a plain-text var, not a secret. Leave it unset.
+ * Set it to 1 only while testing Generate HD, then remove it and deploy.
  */
-import { handleRequest } from "./app.mjs";
+import { handleRequest, testGrantFlag } from "./app.mjs";
 
 const worker = {
   async fetch(request, env) {
@@ -29,6 +31,7 @@ const worker = {
       wanResolution: env.WAN_RESOLUTION || "",
       wanDuration: env.WAN_DURATION || "",
       wanAudio: env.WAN_AUDIO || "",
+      testGrantEnabled: testGrantFlag(env.TEST_GRANT_ENABLED),
     });
   },
 };

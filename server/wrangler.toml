@@ -17,6 +17,9 @@ compatibility_date = "2024-11-01"
 # Optional, not secret: DASHSCOPE_REGION (default beijing),
 # DASHSCOPE_BASE_URL (overrides the region host), WAN_RESOLUTION (720P),
 # WAN_DURATION (5), WAN_AUDIO (false). Do not copy the API key into [vars].
+# TEST_GRANT_ENABLED is a temporary plain-text var. Leave it unset.
+# Set it to "1" only while testing Generate HD, then remove it and deploy.
+# Any other value hides the route (404) and the site control.
 
 [vars]
 GENERATION_CREDIT_COST = "1"

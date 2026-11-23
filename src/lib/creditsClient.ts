@@ -210,6 +210,51 @@ export async function pollPaidGeneration(session: string, ticket: string): Promi
   }
 }
 
+export type TestGrantResult = WalletSnapshot & {
+  granted: boolean;
+  capped: boolean;
+};
+
+/** True only when the Worker health payload sets testGrant to boolean true. */
+export async function fetchTestGrantEnabled(): Promise<boolean> {
+  const origin = await proxyOrigin();
+  if (!origin) return false;
+  try {
+    const response = await fetch(`${origin}/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { testGrant?: unknown };
+    return body.testGrant === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Ask the Worker for the temporary 2-credit grant and a browser session. */
+export async function claimTestGrant(): Promise<TestGrantResult> {
+  const origin = await proxyOrigin();
+  if (!origin) throw new Error("credits_unavailable");
+  const response = await fetch(`${origin}/v1/credits/test-grant`, {
+    method: "POST",
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+  const body = await readJson(response);
+  const capped = response.status === 429 && body.error === "test_grant_cap";
+  if ((response.ok || capped) && body.session && typeof body.balance === "string") {
+    return {
+      balance: body.balance,
+      cost: body.cost || "1",
+      session: body.session,
+      granted: body.ok === true && (body as { granted?: unknown }).granted === true,
+      capped,
+    };
+  }
+  throw new Error(body.error || "credits_unavailable");
+}
+
 /** Same-origin download. The Worker re-checks the task and attaches the mp4. */
 export async function hdDownloadUrl(ticket: string): Promise<string> {
   const origin = await proxyOrigin();

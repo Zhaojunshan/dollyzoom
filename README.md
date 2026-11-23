@@ -129,7 +129,7 @@ There is no login. Checkout collects the email and creates the Creem customer. A
 
 The static **Buy HD — $1.49** link is unchanged: `https://www.creem.io/payment/prod_w9pGaP1bfoaF20iNiGXKt`. A browser that already has a session can also open a checkout tied to that same customer (`POST /v1/credits/checkout`) so a later purchase lands in the same wallet. `POST /v1/generate` is the free watermarked preview and does **not** debit. It stays an in-browser CSS preview. It does not call Wanxiang or DashScope.
 
-`POST /v1/generations` is the paid path: balance, then Moderation API, then debit 1 generation credit with that moderation id, then Wan image-to-video. The model is `wan2.6-i2v-flash`. Defaults are `720P`, 5 seconds, and `parameters.audio: false` (this model bills a silent clip only when audio is explicitly false). `WAN_RESOLUTION` (`480P`, `720P`, or `1080P`), `WAN_DURATION` (2–15), and `WAN_AUDIO` (`true` or `false`) change those three settings. An unknown value stays on the default. The moderated prompt is sent with `prompt_extend: false`. If the task is not accepted, the Worker reverses that debit. A later `FAILED` or `CANCELED` query reverses it too. `UNKNOWN` means the 24-hour task window has passed; that does not refund a clip that already succeeded. This code never grants credits.
+`POST /v1/generations` is the paid path: balance, then Moderation API, then debit 1 generation credit with that moderation id, then Wan image-to-video. The model is `wan2.6-i2v-flash`. Defaults are `720P`, 5 seconds, and `parameters.audio: false` (this model bills a silent clip only when audio is explicitly false). `WAN_RESOLUTION` (`480P`, `720P`, or `1080P`), `WAN_DURATION` (2–15), and `WAN_AUDIO` (`true` or `false`) change those three settings. An unknown value stays on the default. The moderated prompt is sent with `prompt_extend: false`. If the task is not accepted, the Worker reverses that debit. A later `FAILED` or `CANCELED` query reverses it too. `UNKNOWN` means the 24-hour task window has passed; that does not refund a clip that already succeeded. This code never grants purchased credits.
 
 Video generation is asynchronous. The paid response does not contain the mp4. It contains `generation.ticket` and `generation.taskId` while `generation.status` is `processing`. The site stores that ticket in `localStorage` and polls `POST /v1/generations/status` about every 8 seconds. When DashScope reports `SUCCEEDED`, that poll returns `generation.videoUrl`, an https OSS link the page plays in a `<video>` element. DashScope says that link expires in about 24 hours. The page also offers **Save video**, which is `GET /v1/generations/file?ticket=…`. That request checks the task again and streams the current mp4 as `dollyzoom-hd.mp4`. Save it before the link expires. Leaving the tab is fine: reopening the site on the same browser resumes the poll, which is also what refunds a failed render. A provider timeout while polling stays `processing` and does not reverse the debit.
 
@@ -139,11 +139,12 @@ Purchased credits are added by Creem when the product grants AI generation credi
 
 | Path | Role |
 | --- | --- |
-| `GET /health` | Key class and whether credits secrets are set. Never returns secret values. |
+| `GET /health` | Key class, whether credits secrets are set, and `testGrant: true` only while the temporary grant is on. Never returns secret values. |
 | `POST /v1/generate` | Free preview. Screen only. |
 | `GET /v1/credits` | Live wallet balance for the browser session. |
 | `POST /v1/credits/claim` | Verify the checkout return query and issue a session. |
 | `POST /v1/credits/checkout` | Customer-bound checkout, or the static $1.49 link when there is no session. |
+| `POST /v1/credits/test-grant` | Temporary. Exists only when `TEST_GRANT_ENABLED` is `1`. Grants 2 generation credits and a session. |
 | `POST /v1/generations` | Paid path. Debits only after an `allow` result, then starts Wan. |
 | `POST /v1/generations/status` | Poll a paid task. Returns the video URL, or reverses the debit if the task failed. |
 | `GET /v1/generations/file` | Download the current mp4 while the DashScope link is still valid. |
@@ -161,6 +162,7 @@ Set these on the Worker. Do not commit values.
 | `GENERATION_CREDIT_COST` | Credits debited per paid HD attempt. Default `1`. This does not change what a purchase grants. |
 | `CREEM_SUCCESS_URL` | Optional. Must be `https://dollyzoom.top/`, `https://www.dollyzoom.top/…`, or localhost. Default `https://dollyzoom.top/`. |
 | `CREEM_ALLOW_TEST_KEY` | Leave unset in production. |
+| `TEST_GRANT_ENABLED` | Temporary plain-text var. Leave unset. Set to `1` only to grant 2 test generation credits, then remove it and deploy. |
 | `DASHSCOPE_API_KEY` | Beijing Bailian key. Required for paid HD. Never commit it. |
 | `DASHSCOPE_REGION` | Optional. `beijing` (default) or `singapore`. |
 | `DASHSCOPE_BASE_URL` | Optional https origin. Overrides the region host. |
@@ -196,6 +198,36 @@ curl -sS https://dollyzoom-moderation.eight-grenadilla.workers.dev/health
 ```
 
 `public/moderation.json` already points the site at `POST /v1/generate` on that host. The credits routes share that origin. After deploy, `health` should report `"key":"live"`, `"credits":"ready"`, and `"video":"ready"`. Paid HD does not render until `DASHSCOPE_API_KEY` is set. A missing key fails the task and reverses the debit. Remove any previously stored `MINIMAX_API_KEY`; this path no longer reads it.
+
+#### Temporary test credits
+
+Live checkout can show “Live Payments Not Enabled” while the store is under review. This path lets the store owner put **2** generation credits on one Creem customer and open a browser session, then press **Generate HD**. It is off unless the plain-text Worker var `TEST_GRANT_ENABLED` is exactly `1`.
+
+While it is on, `GET /health` includes `"testGrant": true` and nothing else about the grant. The upload section shows **Add 2 test credits**. That button calls `POST /v1/credits/test-grant`. The Worker looks up `hd-test@dollyzoom.top` (`GET /v1/customers?email=`), creates that customer with `external_id` `dzu_owner_hd_test` when it is missing, ensures the `generation` wallet, and credits **2** with Creem’s credit API. The browser saves the returned session and shows the balance. Purchased credits are still applied only by Creem. Webhooks still do not credit the wallet.
+
+The same click is idempotent while that wallet still has at least 2 credits. Creem’s own transactions for this grant cap successful grants at 5 (10 credits). Each IP is also limited to 8 requests a minute. The request body is ignored. There is no second ledger in this repo.
+
+Turn it off as soon as the test is done. A deploy from this `wrangler.toml` does not set the var, and a later deploy replaces Worker vars with the file, so the switch does not survive a normal deploy.
+
+1. On a machine logged into Cloudflare, edit `server/wrangler.toml` locally and add this under `[vars]`. Do not commit that line.
+
+   ```toml
+   TEST_GRANT_ENABLED = "1"
+   ```
+
+2. Deploy the existing Worker and confirm the flag. The response must not contain the API key or the session secret.
+
+   ```bash
+   cd server
+   npx wrangler deploy
+   curl -sS https://dollyzoom-moderation.eight-grenadilla.workers.dev/health
+   ```
+
+3. Publish the site (GitHub Pages on `main`) so the button is in the upload section. Open https://dollyzoom.top/, click **Add 2 test credits**, then upload a photo and press **Generate HD**.
+
+4. Remove `TEST_GRANT_ENABLED` from `wrangler.toml` and deploy again. `health` no longer includes `testGrant`. `POST /v1/credits/test-grant` returns 404, and the button stays hidden.
+
+Do not store `TEST_GRANT_ENABLED` with `wrangler secret put`. Do not point this Worker at `test-api.creem.io` or a `creem_test_` key. Leave product `prod_w9pGaP1bfoaF20iNiGXKt` unchanged. While the flag is on, anyone who can open the site can use the same promo wallet, so keep the window short.
 
 ## Sample media
 
