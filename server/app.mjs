@@ -1,5 +1,6 @@
 import { generationPermitted } from "../src/lib/moderationGate.mjs";
 import { creditsHealth, dispatchCredits } from "./credits.mjs";
+import { minimaxConfigured } from "./minimax.mjs";
 import {
   CREEM_PRODUCTION_MODERATION_URL,
   CREEM_SANDBOX_MODERATION_URL,
@@ -170,6 +171,7 @@ export async function handleRequest(request, options = {}) {
           webhookSecret: options.webhookSecret || "",
           sessionSecret: options.sessionSecret || "",
         }),
+        video: minimaxConfigured(options.minimaxApiKey || "") ? "ready" : "unconfigured",
       },
       200,
       origin,
@@ -185,6 +187,8 @@ export async function handleRequest(request, options = {}) {
     successUrl: options.successUrl,
     creemFetch: options.creemFetch,
     generateImpl: options.generateImpl,
+    minimaxApiKey: options.minimaxApiKey || "",
+    minimaxFetch: options.minimaxFetch,
     now: options.now,
     originAllowed: isAllowedOrigin,
     takeRateLimit: (ipAddress, bucket) => rateLimit(ipAddress, limit, bucket),

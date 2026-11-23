@@ -1,6 +1,16 @@
 import { generationPermitted } from "../src/lib/moderationGate.mjs";
 import { CreemRequestError, createCreem } from "./creemApi.mjs";
 import {
+  HAILUO_DURATION,
+  HAILUO_MODEL,
+  HAILUO_RESOLUTION,
+  issueVideoTicket,
+  parsePortraitDataUrl,
+  queryHailuoTask,
+  readVideoTicket,
+  startHailuoImageToVideo,
+} from "./minimax.mjs";
+import {
   GENERATION_WALLET_NAME,
   HD_PRODUCT_ID,
   MODERATION_MAX_AGE_MS,
@@ -80,11 +90,7 @@ export function classifyModeration(data, now) {
   return { ok: true, id };
 }
 
-export async function unimplementedGeneration() {
-  const error = new Error("generation_not_implemented");
-  error.code = "generation_not_implemented";
-  throw error;
-}
+const PAID_BODY_LIMIT = 18 * 1024 * 1024;
 
 async function ensureGenerationWallet(creem, customerId) {
   let startingAfter = "";
@@ -235,8 +241,10 @@ function debitFailure(error) {
 }
 
 /**
- * Balance, then screen, then debit with the moderation id, then the model hook.
- * The hook failing reverses that debit. A failed screen or debit never generates.
+ * Balance, then screen, then debit one credit with the moderation id, then
+ * start the video. A failed screen or debit never starts a video. If the
+ * video task is not accepted, or a processing task cannot be signed for
+ * polling, the debit is reversed.
  */
 export async function runPaidGeneration({
   creem,
@@ -247,6 +255,8 @@ export async function runPaidGeneration({
   now,
   screen,
   generate,
+  image,
+  signTicket,
 }) {
   let balance;
   try {
@@ -292,8 +302,28 @@ export async function runPaidGeneration({
       prompt,
       generationId,
       moderationId: decision.id,
+      image,
     });
-    const generation = raw === undefined ? null : raw;
+    let generation = raw === undefined ? null : raw;
+    if (
+      generation &&
+      typeof generation === "object" &&
+      generation.status === "processing"
+    ) {
+      if (typeof generation.taskId !== "string" || typeof signTicket !== "function") {
+        throw Object.assign(new Error("generation_failed"), { code: "generation_failed" });
+      }
+      const ticket = await signTicket({
+        taskId: generation.taskId,
+        transactionId: debit.id,
+        accountId: session.aid,
+        generationId,
+      });
+      if (typeof ticket !== "string" || !ticket.includes(".")) {
+        throw Object.assign(new Error("generation_failed"), { code: "generation_failed" });
+      }
+      generation = { ...generation, ticket };
+    }
     JSON.stringify(generation);
     return {
       outcome: "generated",
@@ -397,6 +427,7 @@ export async function dispatchCredits(request, ctx) {
     path === "/v1/credits/claim" ||
     path === "/v1/credits/checkout" ||
     path === "/v1/generations" ||
+    path === "/v1/generations/status" ||
     path === "/v1/creem/webhook";
   if (!known) return null;
 
@@ -419,6 +450,7 @@ export async function dispatchCredits(request, ctx) {
   if (path === "/v1/credits/claim" && method === "POST") return handleClaim(request, ctx);
   if (path === "/v1/credits/checkout" && method === "POST") return handleCheckout(request, ctx);
   if (path === "/v1/generations" && method === "POST") return handlePaid(request, ctx);
+  if (path === "/v1/generations/status" && method === "POST") return handleGenerationStatus(request, ctx);
   return json({ ok: false, error: "not_found" }, 404);
 }
 
@@ -526,11 +558,21 @@ async function handlePaid(request, ctx) {
   const ready = await requireReady(ctx, request);
   if (!ready.session) return ready.error;
 
-  const parsed = await readJsonBody(request, 4000);
-  if (parsed.error === "too_large") return ctx.json({ ok: false, error: "prompt_too_long" }, 400);
+  const declared = Number(request.headers.get("content-length") || "0");
+  if (Number.isFinite(declared) && declared > PAID_BODY_LIMIT) {
+    return ctx.json({ ok: false, error: "image_too_large" }, 413);
+  }
+  const parsed = await readJsonBody(request, PAID_BODY_LIMIT);
+  if (parsed.error === "too_large") return ctx.json({ ok: false, error: "image_too_large" }, 413);
   if (parsed.error) return ctx.json({ ok: false, error: "bad_request" }, 400);
   const selected = ctx.selectPrompt(parsed.body || {});
   if (selected.error) return ctx.json({ ok: false, error: selected.error }, 400);
+
+  const portrait = parsePortraitDataUrl(parsed.body?.image);
+  if (typeof ctx.generateImpl !== "function" && portrait.error) {
+    const status = portrait.error === "image_too_large" ? 413 : 400;
+    return ctx.json({ ok: false, error: portrait.error }, status);
+  }
 
   const generationId = normalizeGenerationId(parsed.body?.generationId);
   const creem = creemFor(ctx);
@@ -542,7 +584,17 @@ async function handlePaid(request, ctx) {
     cost: ready.cost,
     now: nowOf(ctx),
     screen: ctx.screen,
-    generate: ctx.generateImpl || unimplementedGeneration,
+    image: portrait.dataUrl || "",
+    signTicket: (fields) => issueVideoTicket(ctx.sessionSecret, fields, nowOf(ctx)),
+    generate:
+      ctx.generateImpl ||
+      ((args) =>
+        startHailuoImageToVideo({
+          apiKey: ctx.minimaxApiKey || "",
+          fetchImpl: ctx.minimaxFetch || fetch,
+          prompt: args.prompt,
+          image: args.image,
+        })),
   });
 
   if (result.outcome === "insufficient") {
@@ -596,6 +648,89 @@ async function handlePaid(request, ctx) {
       moderationId: result.moderationId,
       transactionId: result.transactionId,
       generation: result.generation,
+    },
+    200,
+  );
+}
+
+function videoGeneration(status, taskId, extra = {}) {
+  return {
+    provider: "minimax",
+    model: HAILUO_MODEL,
+    status,
+    taskId,
+    resolution: HAILUO_RESOLUTION,
+    duration: HAILUO_DURATION,
+    ...extra,
+  };
+}
+
+/**
+ * Poll a paid task. queued/running stay processing. succeeded returns the
+ * https video URL. failed/cancelled reverses the original debit. A query
+ * outage stays processing so a blip does not refund a video that may finish.
+ */
+async function handleGenerationStatus(request, ctx) {
+  const header = bearerToken(request.headers.get("authorization"));
+  if (!header) return ctx.json(neededBody(), 401);
+  const ready = await requireReady(ctx, request);
+  if (!ready.session) return ready.error;
+
+  const parsed = await readJsonBody(request, 8000);
+  if (parsed.error) return ctx.json({ ok: false, error: "bad_request" }, 400);
+  const ticketValue = parsed.body && typeof parsed.body.ticket === "string" ? parsed.body.ticket : "";
+  const ticket = await readVideoTicket(ctx.sessionSecret, ticketValue, nowOf(ctx));
+  if (!ticket || ticket.aid !== ready.session.aid) {
+    return ctx.json({ ok: false, error: "generation_not_found" }, 404);
+  }
+
+  const query = await queryHailuoTask({
+    apiKey: ctx.minimaxApiKey || "",
+    fetchImpl: ctx.minimaxFetch || fetch,
+    taskId: ticket.taskId,
+  });
+
+  if (query.outcome === "succeeded") {
+    return ctx.json(
+      {
+        ok: true,
+        status: "succeeded",
+        generation: videoGeneration("succeeded", ticket.taskId, { videoUrl: query.videoUrl }),
+      },
+      200,
+    );
+  }
+
+  if (query.outcome === "failed") {
+    try {
+      await reverseDebit(creemFor(ctx), ready.session.aid, ticket.transactionId);
+    } catch {
+      return ctx.json(
+        {
+          ok: false,
+          error: "refund_pending",
+          transactionId: ticket.transactionId,
+        },
+        502,
+      );
+    }
+    return ctx.json(
+      {
+        ok: false,
+        error: "generation_failed",
+        refunded: true,
+      },
+      502,
+    );
+  }
+
+  const status =
+    query.status === "queued" || query.status === "running" ? query.status : "processing";
+  return ctx.json(
+    {
+      ok: true,
+      status: "processing",
+      generation: videoGeneration(status, ticket.taskId),
     },
     200,
   );

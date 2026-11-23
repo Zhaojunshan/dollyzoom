@@ -5,6 +5,7 @@ import { after, beforeEach, test } from "node:test";
 import { handleRequest, resetRateLimit } from "./app.mjs";
 import { HD_PRODUCT_ID, STATIC_CHECKOUT_URL } from "./creemHost.mjs";
 import { classifyModeration, externalIdFor } from "./credits.mjs";
+import { issueVideoTicket } from "./minimax.mjs";
 import { createProxyServer } from "./index.mjs";
 import {
   SESSION_TTL_MS,
@@ -16,6 +17,9 @@ import {
 } from "./session.mjs";
 
 const LIVE = "creem_unit_test_not_a_real_key";
+const MINIMAX_KEY = "minimax_unit_test_key_not_real";
+const PORTRAIT = `data:image/jpeg;base64,${"A".repeat(80)}`;
+const VIDEO_URL = "https://video-product.cdn.minimax.io/inference_output/dolly.mp4";
 const TEST_KEY = "creem_test_unit_only";
 const SESSION = "session_secret_0123456789";
 const WEBHOOK = "whsec_unit_test_value";
@@ -548,12 +552,12 @@ test("deny, flag, moderation errors, and a stale result do not debit", async () 
       request("/v1/generations", {
         ip,
         headers: { authorization: `Bearer ${await sessionToken()}` },
-        body: { effect: "dolly_zoom" },
-      }),
-      baseOptions({
-        creemFetch: creem.fetchImpl,
-        screenImpl: async () => ({ decision, id: "mod_secret_result" }),
-      }),
+      body: { effect: "dolly_zoom", image: PORTRAIT },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      screenImpl: async () => ({ decision, id: "mod_secret_result" }),
+    }),
     );
     const text = await response.text();
     assert.equal(response.status, 400);
@@ -566,7 +570,7 @@ test("deny, flag, moderation errors, and a stale result do not debit", async () 
     request("/v1/generations", {
       ip: "203.0.113.57",
       headers: { authorization: `Bearer ${await sessionToken()}` },
-      body: { effect: "dolly_zoom" },
+      body: { effect: "dolly_zoom", image: PORTRAIT },
     }),
     baseOptions({
       creemFetch: thrown.fetchImpl,
@@ -583,7 +587,7 @@ test("deny, flag, moderation errors, and a stale result do not debit", async () 
     request("/v1/generations", {
       ip: "203.0.113.58",
       headers: { authorization: `Bearer ${await sessionToken()}` },
-      body: { effect: "dolly_zoom" },
+      body: { effect: "dolly_zoom", image: PORTRAIT },
     }),
     baseOptions({
       creemFetch: stale.fetchImpl,
@@ -664,8 +668,9 @@ test("a balance or debit failure does not generate", async () => {
   assert.equal(generated, 0);
 });
 
-test("the unimplemented model debits and reverses", async () => {
+test("a paid request without a portrait does not debit", async () => {
   const creem = mockCreem(router({ balance: "3" }));
+  let screened = 0;
   const response = await handleRequest(
     request("/v1/generations", {
       ip: "203.0.113.62",
@@ -674,14 +679,44 @@ test("the unimplemented model debits and reverses", async () => {
     }),
     baseOptions({
       creemFetch: creem.fetchImpl,
-      screenImpl: async () => ({ decision: "allow", id: "mod_stub" }),
+      minimaxApiKey: MINIMAX_KEY,
+      screenImpl: async () => {
+        screened += 1;
+        return { decision: "allow", id: "mod_stub" };
+      },
     }),
   );
   const body = await response.json();
-  assert.equal(response.status, 501);
-  assert.equal(body.error, "generation_not_implemented");
+  assert.equal(response.status, 400);
+  assert.equal(body.error, "image_required");
+  assert.equal(screened, 0);
+  assert.equal(creem.calls.length, 0);
+});
+
+test("a missing MiniMax key debits and reverses", async () => {
+  const creem = mockCreem(router({ balance: "3" }));
+  let minimaxCalls = 0;
+  const response = await handleRequest(
+    request("/v1/generations", {
+      ip: "203.0.113.72",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { effect: "dolly_zoom", generationId: "gen_stub_123456", image: PORTRAIT },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      screenImpl: async () => ({ decision: "allow", id: "mod_stub" }),
+      minimaxFetch: async () => {
+        minimaxCalls += 1;
+        throw new Error("minimax should not be called without a key");
+      },
+    }),
+  );
+  const body = await response.json();
+  assert.equal(response.status, 502);
+  assert.equal(body.error, "generation_failed");
   assert.equal(body.refunded, true);
   assert.equal(body.moderationId, "mod_stub");
+  assert.equal(minimaxCalls, 0);
   const reverse = creem.calls.find((call) => call.path.endsWith("/reverse"));
   assert.equal(reverse.body.transaction_id, "cct_debit");
   assert.equal(creditGrant(creem.calls).length, 0);
@@ -852,7 +887,7 @@ test("health reports credits readiness without secrets", async () => {
   const missing = await handleRequest(new Request("https://proxy.example/health"), { apiKey: LIVE });
   assert.equal((await missing.json()).credits, "unconfigured");
   const ready = await handleRequest(new Request("https://proxy.example/health"), baseOptions());
-  assert.deepEqual(await ready.json(), { ok: true, key: "live", credits: "ready" });
+  assert.deepEqual(await ready.json(), { ok: true, key: "live", credits: "ready", video: "unconfigured" });
   assert.equal(JSON.stringify(await (await handleRequest(new Request("https://proxy.example/health"), baseOptions())).json()).includes(SESSION), false);
 });
 
@@ -887,6 +922,338 @@ test("the HTTP server checks the raw webhook body", async () => {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+function mockMinimax(handler) {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    const parsed = new URL(url);
+    const call = {
+      method: init.method || "GET",
+      href: parsed.href,
+      path: parsed.pathname,
+      body: init.body ? JSON.parse(init.body) : null,
+      authorization: init.headers?.authorization || "",
+    };
+    calls.push(call);
+    const result = await handler(call);
+    return new Response(JSON.stringify(result?.body ?? {}), {
+      status: result?.status ?? 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  return { fetchImpl, calls };
+}
+
+test("paid HD debits, starts MiniMax-H3 at 768P for 5 seconds, then polls a playable video", async () => {
+  const creem = mockCreem(router({ balance: "2" }));
+  const minimax = mockMinimax(async (call) => {
+    if (call.method === "POST") {
+      return { body: { task_id: "424010985738629" } };
+    }
+    return {
+      body: {
+        task: {
+          id: "424010985738629",
+          model: "MiniMax-H3",
+          status: "succeeded",
+          content: { url: VIDEO_URL },
+          resolution: "768P",
+          duration: 5,
+        },
+      },
+    };
+  });
+  const screened = [];
+  const started = await handleRequest(
+    request("/v1/generations", {
+      ip: "203.0.113.80",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { effect: "dolly_zoom", generationId: "gen_hd_123456", image: PORTRAIT },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      minimaxApiKey: MINIMAX_KEY,
+      minimaxFetch: minimax.fetchImpl,
+      screenImpl: async (args) => {
+        screened.push(args);
+        return { decision: "allow", id: "mod_hd", object: "moderation_result" };
+      },
+    }),
+  );
+  const startedBody = await started.json();
+  const startedText = JSON.stringify(startedBody);
+  assert.equal(started.status, 200);
+  assert.equal(startedBody.moderationId, "mod_hd");
+  assert.equal(startedBody.transactionId, "cct_debit");
+  assert.equal(startedBody.generation.status, "processing");
+  assert.equal(startedBody.generation.model, "MiniMax-H3");
+  assert.equal(startedBody.generation.resolution, "768P");
+  assert.equal(startedBody.generation.duration, 5);
+  assert.equal(startedBody.generation.taskId, "424010985738629");
+  assert.equal(typeof startedBody.generation.ticket, "string");
+  assert.equal(startedText.includes(MINIMAX_KEY), false);
+  assert.equal(startedText.includes(PORTRAIT), false);
+  assert.equal(JSON.stringify(screened[0]).includes("base64"), false);
+  assert.equal(screened[0].prompt.includes("Hitchcock"), true);
+  const create = minimax.calls[0];
+  assert.equal(create.path, "/v2/video_generation");
+  assert.equal(create.authorization, `Bearer ${MINIMAX_KEY}`);
+  assert.equal(create.body.model, "MiniMax-H3");
+  assert.equal(create.body.resolution, "768P");
+  assert.equal(create.body.duration, 5);
+  assert.equal(create.body.generate_audio, false);
+  assert.equal(create.body.ratio, "adaptive");
+  assert.equal(create.body.content[0].text, screened[0].prompt);
+  assert.equal(create.body.content[1].role, "first_frame");
+  assert.equal(create.body.content[1].image_url.url, PORTRAIT);
+  assert.equal(JSON.stringify(create.body).includes("2K"), false);
+  const debit = creem.calls.find((call) => call.path.endsWith("/debit"));
+  assert.equal(debit.body.amount, "1");
+  assert.equal(debit.body.moderation_id, "mod_hd");
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), false);
+  assert.equal(creditGrant(creem.calls).length, 0);
+
+  const polled = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.81",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket: startedBody.generation.ticket },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      minimaxApiKey: MINIMAX_KEY,
+      minimaxFetch: minimax.fetchImpl,
+    }),
+  );
+  const polledBody = await polled.json();
+  assert.equal(polled.status, 200);
+  assert.equal(polledBody.ok, true);
+  assert.equal(polledBody.status, "succeeded");
+  assert.equal(polledBody.generation.videoUrl, VIDEO_URL);
+  assert.equal(minimax.calls[1].path, "/v2/query/video_generation/424010985738629");
+  assert.equal(minimax.calls[1].authorization, `Bearer ${MINIMAX_KEY}`);
+  assert.equal(JSON.stringify(polledBody).includes(MINIMAX_KEY), false);
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), false);
+  assert.equal(creditGrant(creem.calls).length, 0);
+});
+
+test("a MiniMax create failure reverses the debit and does not return the key", async () => {
+  const creem = mockCreem(router({ balance: "2" }));
+  const minimax = mockMinimax(async () => ({
+    status: 500,
+    body: { type: "error", error: { message: `upstream ${MINIMAX_KEY}` } },
+  }));
+  const response = await handleRequest(
+    request("/v1/generations", {
+      ip: "203.0.113.82",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { effect: "dolly_zoom", generationId: "gen_fail_123456", image: PORTRAIT },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      minimaxApiKey: MINIMAX_KEY,
+      minimaxFetch: minimax.fetchImpl,
+      screenImpl: async () => ({ decision: "allow", id: "mod_down" }),
+    }),
+  );
+  const text = await response.text();
+  const body = JSON.parse(text);
+  assert.equal(response.status, 502);
+  assert.equal(body.error, "generation_failed");
+  assert.equal(body.refunded, true);
+  assert.equal(text.includes(MINIMAX_KEY), false);
+  assert.equal(text.includes(PORTRAIT), false);
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/debit")), true);
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), true);
+  assert.equal(creditGrant(creem.calls).length, 0);
+});
+
+test("polling a failed video reverses, and a provider blip does not", async () => {
+  const ticket = await issueVideoTicket(
+    SESSION,
+    {
+      taskId: "424010985738630",
+      transactionId: "cct_debit",
+      accountId: ACCOUNT,
+      generationId: "gen_poll_123456",
+    },
+    Date.now(),
+  );
+  const failedCreem = mockCreem(router({ balance: "2" }));
+  const failedMinimax = mockMinimax(async () => ({
+    body: {
+      task: {
+        id: "424010985738630",
+        status: "failed",
+        error: { code: "1026", message: "video description contains sensitive content" },
+      },
+    },
+  }));
+  const failed = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.83",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: failedCreem.fetchImpl,
+      minimaxApiKey: MINIMAX_KEY,
+      minimaxFetch: failedMinimax.fetchImpl,
+    }),
+  );
+  const failedText = await failed.text();
+  const failedBody = JSON.parse(failedText);
+  assert.equal(failed.status, 502);
+  assert.equal(failedBody.error, "generation_failed");
+  assert.equal(failedBody.refunded, true);
+  assert.equal(failedText.includes("sensitive"), false);
+  const reverse = failedCreem.calls.find((call) => call.path.endsWith("/reverse"));
+  assert.equal(reverse.body.transaction_id, "cct_debit");
+  assert.equal(creditGrant(failedCreem.calls).length, 0);
+
+  const stuck = mockCreem(router({ balance: "2", reverseFails: true }));
+  const pending = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.84",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: stuck.fetchImpl,
+      minimaxApiKey: MINIMAX_KEY,
+      minimaxFetch: failedMinimax.fetchImpl,
+    }),
+  );
+  const pendingBody = await pending.json();
+  assert.equal(pending.status, 502);
+  assert.equal(pendingBody.error, "refund_pending");
+  assert.equal(pendingBody.transactionId, "cct_debit");
+  assert.equal(pendingBody.refunded, undefined);
+
+  const runningCreem = mockCreem(router({ balance: "2" }));
+  const running = mockMinimax(async () => ({
+    body: { task: { id: "424010985738630", status: "running" } },
+  }));
+  const still = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.85",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: runningCreem.fetchImpl,
+      minimaxApiKey: MINIMAX_KEY,
+      minimaxFetch: running.fetchImpl,
+    }),
+  );
+  const stillBody = await still.json();
+  assert.equal(still.status, 200);
+  assert.equal(stillBody.status, "processing");
+  assert.equal(stillBody.generation.status, "running");
+  assert.equal(stillBody.generation.videoUrl, undefined);
+  assert.equal(runningCreem.calls.some((call) => call.path.endsWith("/reverse")), false);
+
+  const blipCreem = mockCreem(router({ balance: "2" }));
+  const blip = mockMinimax(async () => ({ status: 500, body: { type: "error" } }));
+  const retry = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.86",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: blipCreem.fetchImpl,
+      minimaxApiKey: MINIMAX_KEY,
+      minimaxFetch: blip.fetchImpl,
+    }),
+  );
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).status, "processing");
+  assert.equal(blipCreem.calls.length, 0);
+});
+
+test("a status poll rejects a tampered ticket and another customer's ticket", async () => {
+  const ticket = await issueVideoTicket(
+    SESSION,
+    {
+      taskId: "424010985738629",
+      transactionId: "cct_debit",
+      accountId: ACCOUNT,
+      generationId: "gen_poll_123456",
+    },
+    Date.now(),
+  );
+  const other = await issueVideoTicket(
+    SESSION,
+    {
+      taskId: "424010985738629",
+      transactionId: "cct_debit",
+      accountId: "cca_other",
+      generationId: "gen_poll_123456",
+    },
+    Date.now(),
+  );
+  let minimaxCalls = 0;
+  const options = baseOptions({
+    creemFetch: mockCreem(router()).fetchImpl,
+    minimaxApiKey: MINIMAX_KEY,
+    minimaxFetch: async () => {
+      minimaxCalls += 1;
+      throw new Error("should not query");
+    },
+  });
+  const tampered = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.87",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket: `${ticket.slice(0, -1)}${ticket.endsWith("a") ? "b" : "a"}` },
+    }),
+    options,
+  );
+  assert.equal(tampered.status, 404);
+  const foreign = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.88",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket: other },
+    }),
+    options,
+  );
+  assert.equal(foreign.status, 404);
+  assert.equal(minimaxCalls, 0);
+});
+
+test("the free preview does not call MiniMax or debit", async () => {
+  let minimaxCalls = 0;
+  const response = await handleRequest(
+    request("/v1/generate", { body: { effect: "dolly_zoom", image: PORTRAIT }, ip: "203.0.113.89" }),
+    baseOptions({
+      minimaxApiKey: MINIMAX_KEY,
+      minimaxFetch: async () => {
+        minimaxCalls += 1;
+        throw new Error("minimax should not run for the free preview");
+      },
+      screenImpl: async () => ({ decision: "allow", id: "mod_free_video" }),
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    decision: "allow",
+    moderationId: "mod_free_video",
+  });
+  assert.equal(minimaxCalls, 0);
+});
+
+test("health reports the video provider without the MiniMax key", async () => {
+  const response = await handleRequest(new Request("https://proxy.example/health"), {
+    ...baseOptions(),
+    minimaxApiKey: MINIMAX_KEY,
+  });
+  const text = await response.text();
+  assert.equal(JSON.parse(text).video, "ready");
+  assert.equal(text.includes(MINIMAX_KEY), false);
 });
 
 after(() => {

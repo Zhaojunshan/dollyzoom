@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <LegalDocument title="Privacy Policy" updated="November 13, 2026">
+    <LegalDocument title="Privacy Policy" updated="November 23, 2026">
       <p>
         This policy explains how DollyZoom at{" "}
         <a href="https://dollyzoom.top/">dollyzoom.top</a> handles information.
@@ -23,9 +23,15 @@ export default function PrivacyPage() {
       <h2>Photos you upload</h2>
       <p>
         The free preview is created in your browser from the file you choose.
-        That photo is not uploaded to a DollyZoom server. It stays on your
-        device unless your own browser or an extension sends it somewhere else.
-        We do not build a gallery from customer photos.
+        That preview does not upload the photo to a DollyZoom server. It stays
+        on your device unless your own browser or an extension sends it
+        somewhere else. We do not build a gallery from customer photos.
+      </p>
+      <p>
+        Generate HD is different. That button uploads the photo to our proxy,
+        which sends it to MiniMax (api.minimax.io) to render a short video.
+        We do not keep the photo after the request. MiniMax processes it to
+        make the clip and returns a time-limited video link.
       </p>
 
       <h2>Content screening</h2>
@@ -69,16 +75,17 @@ export default function PrivacyPage() {
       <h2>Sharing</h2>
       <p>
         We share the screening prompt with Creem so the generation can be
-        checked. We share payment processing with Creem when you buy HD. We do
-        not sell personal information. We may disclose information if the law
-        requires it.
+        checked. We share payment processing with Creem when you buy HD. When
+        you click Generate HD, we share that photo and the screened prompt with
+        MiniMax so it can render the video. We do not sell personal
+        information. We may disclose information if the law requires it.
       </p>
 
       <h2>International processing</h2>
       <p>
-        The operator is in China. GitHub Pages and Creem may process data in
-        other countries. By using the site or emailing support, you understand
-        that this processing is needed to run the service.
+        The operator is in China. GitHub Pages, Creem, and MiniMax may process
+        data in other countries. By using the site or emailing support, you
+        understand that this processing is needed to run the service.
       </p>
 
       <h2>Children</h2>
