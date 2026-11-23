@@ -13,6 +13,7 @@
 import http from "node:http";
 
 import { classifyKey, handleRequest } from "./app.mjs";
+import { dashscopeConfigured } from "./dashscope.mjs";
 
 import { pathToFileURL } from "node:url";
 
@@ -45,6 +46,12 @@ export function createProxyServer(options = {}) {
         sessionSecret: options.sessionSecret ?? process.env.CREEM_SESSION_SECRET ?? "",
         creditCost: options.creditCost ?? process.env.GENERATION_CREDIT_COST,
         successUrl: options.successUrl ?? process.env.CREEM_SUCCESS_URL,
+        dashscopeApiKey: options.dashscopeApiKey ?? process.env.DASHSCOPE_API_KEY ?? "",
+        dashscopeBaseUrl: options.dashscopeBaseUrl ?? process.env.DASHSCOPE_BASE_URL ?? "",
+        dashscopeRegion: options.dashscopeRegion ?? process.env.DASHSCOPE_REGION ?? "",
+        wanResolution: options.wanResolution ?? process.env.WAN_RESOLUTION ?? "",
+        wanDuration: options.wanDuration ?? process.env.WAN_DURATION ?? "",
+        wanAudio: options.wanAudio ?? process.env.WAN_AUDIO ?? "",
         screenImpl: options.screenImpl,
         generateImpl: options.generateImpl,
         creemFetch: options.creemFetch,
@@ -79,7 +86,7 @@ if (isDirectRun) {
   createProxyServer({ port, apiKey }).listen(port, () => {
     // Log the key class only. Never print the key itself.
     console.log(
-      `dollyzoom moderation proxy on :${port} (key: ${classifyKey(apiKey)})`,
+      `dollyzoom moderation proxy on :${port} (key: ${classifyKey(apiKey)}, video: ${dashscopeConfigured(process.env.DASHSCOPE_API_KEY) ? "ready" : "unconfigured"})`,
     );
   });
 }

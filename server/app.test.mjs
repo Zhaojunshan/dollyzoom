@@ -273,6 +273,7 @@ test("the HTTP server hides the key and blocks until allow", async () => {
       ok: true,
       key: "live",
       credits: "unconfigured",
+      video: "unconfigured",
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

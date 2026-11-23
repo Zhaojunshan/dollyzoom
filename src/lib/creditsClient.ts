@@ -1,7 +1,9 @@
+import { validHdJob } from "@/lib/hdPoll.mjs";
 import { CHECKOUT_URL } from "@/lib/site";
 import { loadModerationEndpoint, workerOrigin } from "@/lib/screenGeneration";
 
 export const SESSION_KEY = "dollyzoom.creem.session";
+export const HD_JOB_KEY = "dollyzoom.hd.job";
 
 const SESSION_TOKEN = /^[A-Za-z0-9_-]+\.[0-9a-fA-F]+$/;
 
@@ -11,15 +13,32 @@ export type WalletSnapshot = {
   session: string;
 };
 
+export type PaidGeneration = {
+  status?: string;
+  taskId?: string;
+  ticket?: string;
+  videoUrl?: string;
+  resolution?: string;
+  duration?: number;
+};
+
 export type PaidResponse = {
   ok: boolean;
   error?: string;
+  status?: string;
   checkoutUrl?: string;
   balance?: string;
   cost?: string;
   refunded?: boolean;
   moderationId?: string;
   transactionId?: string;
+  generation?: PaidGeneration;
+};
+
+export type HdJob = {
+  ticket: string;
+  startedAt: number;
+  videoUrl?: string;
 };
 
 export function loadSession(): string {
@@ -43,6 +62,36 @@ export function saveSession(session: string): void {
 export function clearSession(): void {
   try {
     localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export function loadHdJob(): HdJob | null {
+  try {
+    const raw = localStorage.getItem(HD_JOB_KEY);
+    if (!raw) return null;
+    const job = validHdJob(JSON.parse(raw)) as HdJob | null;
+    if (!job) localStorage.removeItem(HD_JOB_KEY);
+    return job;
+  } catch {
+    return null;
+  }
+}
+
+export function saveHdJob(job: HdJob): void {
+  const valid = validHdJob(job);
+  if (!valid) return;
+  try {
+    localStorage.setItem(HD_JOB_KEY, JSON.stringify(valid));
+  } catch {
+    // Private mode can reject storage. Polling still works for this page view.
+  }
+}
+
+export function clearHdJob(): void {
+  try {
+    localStorage.removeItem(HD_JOB_KEY);
   } catch {
     // Ignore storage failures.
   }
@@ -116,7 +165,11 @@ export async function fetchWallet(session: string): Promise<WalletSnapshot> {
   };
 }
 
-export async function startPaidGeneration(session: string, generationId: string): Promise<PaidResponse> {
+export async function startPaidGeneration(
+  session: string,
+  generationId: string,
+  image: string,
+): Promise<PaidResponse> {
   const origin = await proxyOrigin();
   if (!origin) return { ok: false, error: "credits_unavailable" };
   try {
@@ -126,12 +179,42 @@ export async function startPaidGeneration(session: string, generationId: string)
         "content-type": "application/json",
         ...(session ? { authorization: `Bearer ${session}` } : {}),
       },
-      body: JSON.stringify({ effect: "dolly_zoom", generationId }),
-      signal: AbortSignal.timeout(20_000),
+      body: JSON.stringify({ effect: "dolly_zoom", generationId, image }),
+      signal: AbortSignal.timeout(90_000),
     });
     const body = await readJson(response);
     return { ...body, ok: response.ok && body.ok === true };
   } catch {
     return { ok: false, error: "credits_unavailable" };
   }
+}
+
+/** Ask the worker whether a paid Wan task has a video yet. */
+export async function pollPaidGeneration(session: string, ticket: string): Promise<PaidResponse> {
+  const origin = await proxyOrigin();
+  if (!origin) return { ok: false, error: "credits_unavailable" };
+  try {
+    const response = await fetch(`${origin}/v1/generations/status`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(session ? { authorization: `Bearer ${session}` } : {}),
+      },
+      body: JSON.stringify({ ticket }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const body = await readJson(response);
+    return { ...body, ok: response.ok && body.ok === true };
+  } catch {
+    return { ok: false, error: "generation_pending" };
+  }
+}
+
+/** Same-origin download. The Worker re-checks the task and attaches the mp4. */
+export async function hdDownloadUrl(ticket: string): Promise<string> {
+  const origin = await proxyOrigin();
+  if (!origin || !ticket) return "";
+  const url = new URL(`${origin}/v1/generations/file`);
+  url.searchParams.set("ticket", ticket);
+  return url.toString();
 }

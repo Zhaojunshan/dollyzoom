@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <LegalDocument title="Terms of Service" updated="November 13, 2026">
+    <LegalDocument title="Terms of Service" updated="November 23, 2026">
       <p>
         These terms govern use of DollyZoom at{" "}
         <a href="https://dollyzoom.top/">dollyzoom.top</a>, an AI video tool that
@@ -55,10 +55,12 @@ export default function TermsPage() {
       <h2>Your content</h2>
       <p>
         You keep your rights in photos you upload. The free preview is processed
-        in your browser. You give us a limited permission to screen the
-        generation request and to show you that preview. Our sample still and
-        sample clip on the homepage are original illustrations owned by the
-        operator.
+        in your browser and does not spend generation credits. Generate HD
+        uploads the photo so we can send it to Alibaba Cloud Model Studio to render the short
+        video you requested. You give us a limited permission to screen the
+        generation request, to transmit that photo for a paid render, and to
+        show you the result. Our sample still and sample clip on the homepage
+        are original illustrations owned by the operator.
       </p>
 
       <h2>Payments</h2>

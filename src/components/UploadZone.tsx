@@ -7,14 +7,22 @@ import { CheckoutLink } from "@/components/CheckoutLink";
 import { DollyPreview } from "@/components/DollyPreview";
 import {
   claimPurchase,
+  clearHdJob,
   clearSession,
   fetchWallet,
+  hdDownloadUrl,
+  loadHdJob,
   loadSession,
+  pollPaidGeneration,
+  saveHdJob,
   saveSession,
   safeCheckoutUrl,
   startPaidGeneration,
+  type HdJob,
   type WalletSnapshot,
 } from "@/lib/creditsClient";
+import { HD_JOB_TTL_MS, hdPollAction } from "@/lib/hdPoll.mjs";
+import { PortraitError, preparePortrait } from "@/lib/preparePortrait";
 import { ScreeningError, screenGeneration } from "@/lib/screenGeneration";
 
 type GenerateStatus = "idle" | "screening" | "ready" | "error";
@@ -28,6 +36,12 @@ function screeningMessage(code: string): string {
 
 function paidMessage(body: { error?: string; refunded?: boolean; transactionId?: string }): string {
   if (body.error === "prompt_rejected") return screeningMessage("prompt_rejected");
+  if (body.error === "image_required" || body.error === "image_dimensions") {
+    return "Use a JPG, PNG, or WEBP photo, at least 256 pixels on each side, with an aspect ratio between 2:5 and 5:2.";
+  }
+  if (body.error === "image_too_large") {
+    return "That photo is too large. Please use an image under 10 MB.";
+  }
   if (body.error === "generation_not_implemented" && body.refunded) {
     return "HD video rendering is not connected yet. The credit debit was reversed, so the wallet balance is unchanged.";
   }
@@ -41,12 +55,70 @@ function paidMessage(body: { error?: string; refunded?: boolean; transactionId?:
   if (body.error === "insufficient_credits" || body.error === "credits_needed") {
     return "Generation credits are required. Continuing to the $1.49 checkout.";
   }
+  if (body.error === "video_expired") {
+    return "This HD clip can no longer be retrieved from the provider. Links last about 24 hours. Contact support if you never received the video.";
+  }
+  if (body.error === "credits_unavailable") {
+    return "The HD request did not finish. Refresh this page. If a credit was used and no video appears, contact support.";
+  }
   return "The credit check or content screening did not succeed, so nothing was generated.";
+}
+
+function waitWhile(ms: number, isCurrent: () => boolean): Promise<boolean> {
+  if (ms <= 0) return Promise.resolve(isCurrent());
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (!isCurrent() || Date.now() - started >= ms) {
+        clearInterval(timer);
+        resolve(isCurrent());
+      }
+    }, 200);
+  });
+}
+
+const HD_READY = "Your HD dolly zoom is ready. The provider link expires within 24 hours, so play it or use Save video now.";
+
+function HdVideo({
+  src,
+  poster,
+  frame,
+  downloadHref,
+}: {
+  src: string;
+  poster?: string | null;
+  frame: { width: number; height: number } | null;
+  downloadHref?: string;
+}) {
+  return (
+    <div className="w-full">
+      <video
+        src={src}
+        poster={poster || undefined}
+        controls
+        playsInline
+        preload="metadata"
+        style={frame ? { aspectRatio: `${frame.width} / ${frame.height}` } : { aspectRatio: "3 / 4" }}
+        className="w-full rounded-lg bg-black ring-1 ring-card-border"
+        data-hd-video="1"
+      >
+        Your HD dolly zoom
+      </video>
+      <a
+        href={downloadHref || src}
+        className="mt-2 inline-block text-xs text-accent-soft underline-offset-2 hover:underline"
+      >
+        Save video
+      </a>
+    </div>
+  );
 }
 
 export function UploadZone() {
   const inputRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
+  const fileRef = useRef<File | null>(null);
+  const hdRun = useRef(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [status, setStatus] = useState<GenerateStatus>("idle");
@@ -55,16 +127,88 @@ export function UploadZone() {
   const [walletLabel, setWalletLabel] = useState("Checking generation wallet…");
   const [paidNote, setPaidNote] = useState<string | null>(null);
   const [paidBusy, setPaidBusy] = useState(false);
+  const [hdStatus, setHdStatus] = useState<"idle" | "starting" | "rendering" | "ready" | "error">("idle");
+  const [hdVideoUrl, setHdVideoUrl] = useState<string | null>(null);
+  const [hdFrame, setHdFrame] = useState<{ width: number; height: number } | null>(null);
+  const [hdDownload, setHdDownload] = useState("");
   const paidLock = useRef(false);
+
+  const rememberWallet = useCallback(async (session: string) => {
+    if (!session) return;
+    try {
+      const next = await fetchWallet(session);
+      saveSession(next.session);
+      setWallet(next);
+      setWalletLabel(`${next.balance} credits`);
+    } catch {
+      // The video state still updates. Balance refresh is best-effort.
+    }
+  }, []);
+
+  const watchTicket = useCallback(
+    async (session: string, job: HdJob, isCurrent: () => boolean) => {
+      const deadline = Math.min(Date.now() + 30 * 60 * 1000, job.startedAt + HD_JOB_TTL_MS);
+      let waitMs = job.videoUrl ? 0 : 5000;
+      while (isCurrent() && Date.now() < deadline) {
+        const keepGoing = await waitWhile(waitMs, isCurrent);
+        if (!keepGoing) return;
+        waitMs = 8000;
+        const poll = await pollPaidGeneration(session, job.ticket);
+        if (!isCurrent()) return;
+        const decision = hdPollAction(poll);
+        if (decision.action === "ready" && decision.videoUrl) {
+          setHdVideoUrl(decision.videoUrl);
+          setHdDownload(await hdDownloadUrl(job.ticket));
+          setHdStatus("ready");
+          setPaidNote(HD_READY);
+          saveHdJob({ ...job, videoUrl: decision.videoUrl });
+          await rememberWallet(session);
+          return;
+        }
+        if (decision.action === "stop") {
+          if (decision.error === "video_expired" && job.videoUrl) {
+            setHdVideoUrl(job.videoUrl);
+            setHdDownload(await hdDownloadUrl(job.ticket));
+            setHdStatus("ready");
+            setPaidNote(HD_READY);
+            return;
+          }
+          clearHdJob();
+          setHdDownload("");
+          setHdVideoUrl(null);
+          setHdStatus("error");
+          setPaidNote(paidMessage(poll));
+          if (poll.refunded || poll.error === "refund_pending") await rememberWallet(session);
+          return;
+        }
+      }
+      if (isCurrent()) {
+        setHdStatus("rendering");
+        setPaidNote(
+          "HD rendering is still going. Reopen this site in this browser and it will keep checking. A credit is returned only if rendering fails.",
+        );
+      }
+    },
+    [rememberWallet],
+  );
 
   const reset = useCallback(() => {
     requestId.current += 1;
+    hdRun.current += 1;
+    paidLock.current = false;
+    fileRef.current = null;
+    clearHdJob();
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setFileName(null);
     setStatus("idle");
     setError(null);
     setPaidNote(null);
+    setPaidBusy(false);
+    setHdStatus("idle");
+    setHdVideoUrl(null);
+    setHdFrame(null);
+    setHdDownload("");
     if (inputRef.current) inputRef.current.value = "";
   }, [previewUrl]);
 
@@ -82,6 +226,7 @@ export function UploadZone() {
       setError(null);
       setPaidNote(null);
       setStatus("idle");
+      fileRef.current = file;
       requestId.current += 1;
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(URL.createObjectURL(file));
@@ -158,6 +303,46 @@ export function UploadZone() {
     };
   }, []);
 
+  useEffect(() => {
+    const job = loadHdJob();
+    if (!job) return;
+    const run = ++hdRun.current;
+    let stopped = false;
+    const locked = !job.videoUrl;
+    if (locked) paidLock.current = true;
+    const session = loadSession();
+    const timer = setTimeout(() => {
+      if (stopped || run !== hdRun.current) return;
+    if (job.videoUrl) {
+      setHdVideoUrl(job.videoUrl);
+      setHdStatus("ready");
+      setPaidNote(HD_READY);
+      void hdDownloadUrl(job.ticket).then((href) => {
+        if (!stopped && run === hdRun.current && href) setHdDownload(href);
+      });
+      } else if (session) {
+        setPaidBusy(true);
+        setHdStatus("rendering");
+        setPaidNote("Checking your HD dolly zoom…");
+      }
+      if (!session) {
+        if (locked) paidLock.current = false;
+        return;
+      }
+      watchTicket(session, job, () => !stopped && run === hdRun.current).finally(() => {
+        if (locked && !stopped && run === hdRun.current) {
+          paidLock.current = false;
+          setPaidBusy(false);
+        }
+      });
+    }, 0);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      if (locked && run === hdRun.current) paidLock.current = false;
+    };
+  }, [watchTicket]);
+
   const refreshWallet = useCallback(async () => {
     const session = wallet?.session || loadSession();
     if (!session) {
@@ -210,23 +395,68 @@ export function UploadZone() {
   };
 
   const handlePaid = async () => {
-    if (!previewUrl || paidLock.current) return;
+    if (!previewUrl || !fileRef.current || paidLock.current) return;
+    const run = ++hdRun.current;
     paidLock.current = true;
     setPaidBusy(true);
     setPaidNote(null);
+    setHdVideoUrl(null);
+    setHdDownload("");
+    setHdStatus("starting");
     const generationId = `gen_${crypto.randomUUID()}`;
+    const session = wallet?.session || loadSession();
     try {
-      const result = await startPaidGeneration(wallet?.session || loadSession(), generationId);
+      const prepared = await preparePortrait(fileRef.current);
+      if (run !== hdRun.current) return;
+      setHdFrame({ width: prepared.width, height: prepared.height });
+      const result = await startPaidGeneration(session, generationId, prepared.dataUrl);
+      if (run !== hdRun.current) return;
       if (result.error === "insufficient_credits" || result.error === "credits_needed") {
         setPaidNote(paidMessage(result));
+        setHdStatus("error");
         window.location.assign(safeCheckoutUrl(result.checkoutUrl));
         return;
       }
-      setPaidNote(paidMessage(result));
-      if (result.ok || result.refunded) await refreshWallet();
+      if (!result.ok) {
+        setPaidNote(paidMessage(result));
+        setHdStatus("error");
+        if (result.refunded || result.error === "refund_pending") await rememberWallet(session);
+        return;
+      }
+      const immediate = hdPollAction(result);
+      if (immediate.action === "ready" && immediate.videoUrl) {
+        setHdVideoUrl(immediate.videoUrl);
+        if (result.generation?.ticket) setHdDownload(await hdDownloadUrl(result.generation.ticket));
+        setHdStatus("ready");
+        setPaidNote(HD_READY);
+        clearHdJob();
+        await rememberWallet(session);
+        return;
+      }
+      const ticket = result.generation?.ticket;
+      if (!ticket) {
+        setPaidNote("HD rendering did not return a status link. Contact support if a credit was used.");
+        setHdStatus("error");
+        return;
+      }
+      const job: HdJob = { ticket, startedAt: Date.now() };
+      saveHdJob(job);
+      setHdStatus("rendering");
+      setPaidNote(
+        "Rendering your HD dolly zoom. This usually takes a few minutes. You can leave and come back in this browser.",
+      );
+      await rememberWallet(session);
+      await watchTicket(session, job, () => run === hdRun.current);
+    } catch (err) {
+      if (run !== hdRun.current) return;
+      const code = err instanceof PortraitError ? err.code : "image_required";
+      setPaidNote(paidMessage({ error: code }));
+      setHdStatus("error");
     } finally {
-      paidLock.current = false;
-      setPaidBusy(false);
+      if (run === hdRun.current) {
+        paidLock.current = false;
+        setPaidBusy(false);
+      }
     }
   };
 
@@ -240,7 +470,8 @@ export function UploadZone() {
           <p className="mt-2 text-muted">
             The sample above is a finished example. A watermarked preview of
             your photo is created in this browser only after content screening.
-            That preview does not spend generation credits.
+            That preview does not spend generation credits. Generate HD uploads
+            the photo and renders a short silent 720P video.
           </p>
         </div>
 
@@ -263,6 +494,17 @@ export function UploadZone() {
               </p>
             )}
           </div>
+          {!previewUrl && (hdVideoUrl || hdStatus === "rendering" || hdStatus === "starting") && (
+            <div className="mb-5" data-hd-status={hdStatus}>
+              {hdVideoUrl ? (
+                    <HdVideo src={hdVideoUrl} frame={hdFrame} downloadHref={hdDownload} />
+              ) : (
+                <p className="text-center text-sm text-accent-soft animate-pulse">
+                  Rendering the HD dolly zoom…
+                </p>
+              )}
+            </div>
+          )}
           {!previewUrl ? (
             <div
               onDragOver={(e) => e.preventDefault()}
@@ -324,21 +566,26 @@ export function UploadZone() {
                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
                   Output
                 </p>
-                <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-card-border bg-background/80 px-4 py-8 text-center">
-                  {status === "idle" && (
+                <div
+                  className="flex flex-1 flex-col items-center justify-center rounded-xl border border-card-border bg-background/80 px-4 py-8 text-center"
+                  data-hd-status={hdStatus}
+                >
+                  {status === "error" && <p className="mb-3 text-sm text-red-400">{error}</p>}
+                  {hdVideoUrl ? (
+                    <HdVideo src={hdVideoUrl} poster={previewUrl} frame={hdFrame} downloadHref={hdDownload} />
+                  ) : hdStatus === "starting" || hdStatus === "rendering" ? (
+                    <p className="text-sm text-accent-soft animate-pulse">Rendering the HD dolly zoom…</p>
+                  ) : status === "idle" ? (
                     <p className="text-sm text-muted">
                       Ready. Screening runs before the preview is created.
                     </p>
-                  )}
-                  {status === "screening" && (
+                  ) : status === "screening" ? (
                     <p className="text-sm text-accent-soft animate-pulse">
                       Screening this request…
                     </p>
-                  )}
-                  {status === "ready" && previewUrl && <DollyPreview src={previewUrl} />}
-                  {status === "error" && (
-                    <p className="text-sm text-red-400">{error}</p>
-                  )}
+                  ) : status === "ready" && previewUrl ? (
+                    <DollyPreview src={previewUrl} />
+                  ) : null}
                 </div>
 
                 <div className="mt-4 flex flex-col gap-2">
@@ -357,11 +604,15 @@ export function UploadZone() {
                   <button
                     type="button"
                     onClick={handlePaid}
-                    disabled={paidBusy || status === "screening"}
+                    disabled={paidBusy || status === "screening" || hdStatus === "starting" || hdStatus === "rendering"}
                     data-generate="hd"
                     className="h-11 rounded-full border border-accent/60 font-semibold text-accent-soft hover:bg-accent/10 disabled:opacity-50 transition-colors"
                   >
-                    {paidBusy ? "Checking credits…" : "Generate HD"}
+                    {hdStatus === "rendering"
+                      ? "Rendering HD…"
+                      : hdStatus === "starting" || paidBusy
+                        ? "Starting HD…"
+                        : "Generate HD"}
                   </button>
                   <button
                     type="button"

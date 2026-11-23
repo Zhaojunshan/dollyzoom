@@ -5,6 +5,7 @@ import { after, beforeEach, test } from "node:test";
 import { handleRequest, resetRateLimit } from "./app.mjs";
 import { HD_PRODUCT_ID, STATIC_CHECKOUT_URL } from "./creemHost.mjs";
 import { classifyModeration, externalIdFor } from "./credits.mjs";
+import { issueVideoTicket } from "./dashscope.mjs";
 import { createProxyServer } from "./index.mjs";
 import {
   SESSION_TTL_MS,
@@ -16,6 +17,11 @@ import {
 } from "./session.mjs";
 
 const LIVE = "creem_unit_test_not_a_real_key";
+const DASHSCOPE_KEY = "dashscope_unit_test_key_not_real";
+const PORTRAIT = `data:image/jpeg;base64,${"A".repeat(80)}`;
+const WAN_TASK = "0385dc79-5ff8-4d82-bcb6-abcdef12";
+const WAN_FAILED = "0385dc79-5ff8-4d82-bcb6-failed01";
+const VIDEO_URL = "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/dolly.mp4?Expires=1893456000";
 const TEST_KEY = "creem_test_unit_only";
 const SESSION = "session_secret_0123456789";
 const WEBHOOK = "whsec_unit_test_value";
@@ -548,12 +554,12 @@ test("deny, flag, moderation errors, and a stale result do not debit", async () 
       request("/v1/generations", {
         ip,
         headers: { authorization: `Bearer ${await sessionToken()}` },
-        body: { effect: "dolly_zoom" },
-      }),
-      baseOptions({
-        creemFetch: creem.fetchImpl,
-        screenImpl: async () => ({ decision, id: "mod_secret_result" }),
-      }),
+      body: { effect: "dolly_zoom", image: PORTRAIT },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      screenImpl: async () => ({ decision, id: "mod_secret_result" }),
+    }),
     );
     const text = await response.text();
     assert.equal(response.status, 400);
@@ -566,7 +572,7 @@ test("deny, flag, moderation errors, and a stale result do not debit", async () 
     request("/v1/generations", {
       ip: "203.0.113.57",
       headers: { authorization: `Bearer ${await sessionToken()}` },
-      body: { effect: "dolly_zoom" },
+      body: { effect: "dolly_zoom", image: PORTRAIT },
     }),
     baseOptions({
       creemFetch: thrown.fetchImpl,
@@ -583,7 +589,7 @@ test("deny, flag, moderation errors, and a stale result do not debit", async () 
     request("/v1/generations", {
       ip: "203.0.113.58",
       headers: { authorization: `Bearer ${await sessionToken()}` },
-      body: { effect: "dolly_zoom" },
+      body: { effect: "dolly_zoom", image: PORTRAIT },
     }),
     baseOptions({
       creemFetch: stale.fetchImpl,
@@ -664,8 +670,9 @@ test("a balance or debit failure does not generate", async () => {
   assert.equal(generated, 0);
 });
 
-test("the unimplemented model debits and reverses", async () => {
+test("a paid request without a portrait does not debit", async () => {
   const creem = mockCreem(router({ balance: "3" }));
+  let screened = 0;
   const response = await handleRequest(
     request("/v1/generations", {
       ip: "203.0.113.62",
@@ -674,14 +681,44 @@ test("the unimplemented model debits and reverses", async () => {
     }),
     baseOptions({
       creemFetch: creem.fetchImpl,
-      screenImpl: async () => ({ decision: "allow", id: "mod_stub" }),
+      dashscopeApiKey: DASHSCOPE_KEY,
+      screenImpl: async () => {
+        screened += 1;
+        return { decision: "allow", id: "mod_stub" };
+      },
     }),
   );
   const body = await response.json();
-  assert.equal(response.status, 501);
-  assert.equal(body.error, "generation_not_implemented");
+  assert.equal(response.status, 400);
+  assert.equal(body.error, "image_required");
+  assert.equal(screened, 0);
+  assert.equal(creem.calls.length, 0);
+});
+
+test("a missing DashScope key debits and reverses", async () => {
+  const creem = mockCreem(router({ balance: "3" }));
+  let providerCalls = 0;
+  const response = await handleRequest(
+    request("/v1/generations", {
+      ip: "203.0.113.72",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { effect: "dolly_zoom", generationId: "gen_stub_123456", image: PORTRAIT },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      screenImpl: async () => ({ decision: "allow", id: "mod_stub" }),
+      dashscopeFetch: async () => {
+        providerCalls += 1;
+        throw new Error("dashscope should not be called without a key");
+      },
+    }),
+  );
+  const body = await response.json();
+  assert.equal(response.status, 502);
+  assert.equal(body.error, "generation_failed");
   assert.equal(body.refunded, true);
   assert.equal(body.moderationId, "mod_stub");
+  assert.equal(providerCalls, 0);
   const reverse = creem.calls.find((call) => call.path.endsWith("/reverse"));
   assert.equal(reverse.body.transaction_id, "cct_debit");
   assert.equal(creditGrant(creem.calls).length, 0);
@@ -852,7 +889,7 @@ test("health reports credits readiness without secrets", async () => {
   const missing = await handleRequest(new Request("https://proxy.example/health"), { apiKey: LIVE });
   assert.equal((await missing.json()).credits, "unconfigured");
   const ready = await handleRequest(new Request("https://proxy.example/health"), baseOptions());
-  assert.deepEqual(await ready.json(), { ok: true, key: "live", credits: "ready" });
+  assert.deepEqual(await ready.json(), { ok: true, key: "live", credits: "ready", video: "unconfigured" });
   assert.equal(JSON.stringify(await (await handleRequest(new Request("https://proxy.example/health"), baseOptions())).json()).includes(SESSION), false);
 });
 
@@ -887,6 +924,385 @@ test("the HTTP server checks the raw webhook body", async () => {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+function mockDashscope(handler) {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    const parsed = new URL(url);
+    const call = {
+      method: init.method || "GET",
+      href: parsed.href,
+      host: parsed.host,
+      path: parsed.pathname,
+      body: init.body ? JSON.parse(init.body) : null,
+      authorization: init.headers?.authorization || "",
+      asyncHeader: init.headers?.["X-DashScope-Async"] || "",
+    };
+    calls.push(call);
+    const result = await handler(call);
+    return new Response(JSON.stringify(result?.body ?? {}), {
+      status: result?.status ?? 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  return { fetchImpl, calls };
+}
+
+test("paid HD debits, starts wan2.6-i2v-flash at 720P for 5 silent seconds, then polls a playable video", async () => {
+  const creem = mockCreem(router({ balance: "2" }));
+  const dashscope = mockDashscope(async (call) => {
+    if (call.method === "POST") {
+      return { body: { output: { task_id: WAN_TASK, task_status: "PENDING" }, request_id: "req_create" } };
+    }
+    return {
+      body: {
+        output: {
+          task_id: WAN_TASK,
+          task_status: "SUCCEEDED",
+          video_url: VIDEO_URL,
+        },
+        usage: { duration: 5, output_video_duration: 5, SR: 720, audio: false },
+      },
+    };
+  });
+  const screened = [];
+  const started = await handleRequest(
+    request("/v1/generations", {
+      ip: "203.0.113.80",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { effect: "dolly_zoom", generationId: "gen_hd_123456", image: PORTRAIT },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: dashscope.fetchImpl,
+      screenImpl: async (args) => {
+        screened.push(args);
+        return { decision: "allow", id: "mod_hd", object: "moderation_result" };
+      },
+    }),
+  );
+  const startedBody = await started.json();
+  const startedText = JSON.stringify(startedBody);
+  assert.equal(started.status, 200);
+  assert.equal(startedBody.moderationId, "mod_hd");
+  assert.equal(startedBody.transactionId, "cct_debit");
+  assert.equal(startedBody.generation.status, "processing");
+  assert.equal(startedBody.generation.provider, "dashscope");
+  assert.equal(startedBody.generation.model, "wan2.6-i2v-flash");
+  assert.equal(startedBody.generation.resolution, "720P");
+  assert.equal(startedBody.generation.duration, 5);
+  assert.equal(startedBody.generation.audio, false);
+  assert.equal(startedBody.generation.taskId, WAN_TASK);
+  assert.equal(typeof startedBody.generation.ticket, "string");
+  assert.equal(startedText.includes(DASHSCOPE_KEY), false);
+  assert.equal(startedText.includes(PORTRAIT), false);
+  assert.equal(JSON.stringify(screened[0]).includes("base64"), false);
+  assert.equal(screened[0].prompt.includes("Hitchcock"), true);
+  const create = dashscope.calls[0];
+  assert.equal(create.host, "dashscope.aliyuncs.com");
+  assert.equal(create.path, "/api/v1/services/aigc/video-generation/video-synthesis");
+  assert.equal(create.authorization, `Bearer ${DASHSCOPE_KEY}`);
+  assert.equal(create.asyncHeader, "enable");
+  assert.equal(create.body.model, "wan2.6-i2v-flash");
+  assert.equal(create.body.input.prompt, screened[0].prompt);
+  assert.equal(create.body.input.img_url, PORTRAIT);
+  assert.equal(create.body.parameters.resolution, "720P");
+  assert.equal(create.body.parameters.duration, 5);
+  assert.equal(create.body.parameters.audio, false);
+  assert.equal(create.body.parameters.prompt_extend, false);
+  assert.equal(create.body.parameters.watermark, false);
+  assert.equal(JSON.stringify(create.body).includes("1080P"), false);
+  const debit = creem.calls.find((call) => call.path.endsWith("/debit"));
+  assert.equal(debit.body.amount, "1");
+  assert.equal(debit.body.moderation_id, "mod_hd");
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), false);
+  assert.equal(creditGrant(creem.calls).length, 0);
+
+  const polled = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.81",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket: startedBody.generation.ticket },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: dashscope.fetchImpl,
+    }),
+  );
+  const polledBody = await polled.json();
+  assert.equal(polled.status, 200);
+  assert.equal(polledBody.ok, true);
+  assert.equal(polledBody.status, "succeeded");
+  assert.equal(polledBody.generation.videoUrl, VIDEO_URL);
+  assert.equal(polledBody.generation.expiresAt, "2030-01-01T00:00:00.000Z");
+  assert.equal(dashscope.calls[1].path, `/api/v1/tasks/${WAN_TASK}`);
+  assert.equal(dashscope.calls[1].authorization, `Bearer ${DASHSCOPE_KEY}`);
+  assert.equal(JSON.stringify(polledBody).includes(DASHSCOPE_KEY), false);
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), false);
+  assert.equal(creditGrant(creem.calls).length, 0);
+
+  const file = await handleRequest(
+    request(`/v1/generations/file?ticket=${encodeURIComponent(startedBody.generation.ticket)}`, {
+      method: "GET",
+      ip: "203.0.113.90",
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: dashscope.fetchImpl,
+      videoFetch: async (url) => {
+        assert.equal(url, VIDEO_URL);
+        return new Response("mp4-bytes", { status: 200, headers: { "content-length": "9" } });
+      },
+    }),
+  );
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get("content-disposition"), 'attachment; filename="dollyzoom-hd.mp4"');
+  assert.equal(await file.text(), "mp4-bytes");
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), false);
+});
+
+test("a DashScope create failure reverses the debit and does not return the key", async () => {
+  const creem = mockCreem(router({ balance: "2" }));
+  const dashscope = mockDashscope(async () => ({
+    status: 401,
+    body: { code: "InvalidApiKey", message: `upstream ${DASHSCOPE_KEY}`, request_id: "req_bad" },
+  }));
+  const response = await handleRequest(
+    request("/v1/generations", {
+      ip: "203.0.113.82",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { effect: "dolly_zoom", generationId: "gen_fail_123456", image: PORTRAIT },
+    }),
+    baseOptions({
+      creemFetch: creem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: dashscope.fetchImpl,
+      screenImpl: async () => ({ decision: "allow", id: "mod_down" }),
+    }),
+  );
+  const text = await response.text();
+  const body = JSON.parse(text);
+  assert.equal(response.status, 502);
+  assert.equal(body.error, "generation_failed");
+  assert.equal(body.refunded, true);
+  assert.equal(text.includes(DASHSCOPE_KEY), false);
+  assert.equal(text.includes(PORTRAIT), false);
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/debit")), true);
+  assert.equal(creem.calls.some((call) => call.path.endsWith("/reverse")), true);
+  assert.equal(creditGrant(creem.calls).length, 0);
+});
+
+test("polling a failed video reverses, and a provider blip or expired task does not", async () => {
+  const ticket = await issueVideoTicket(
+    SESSION,
+    {
+      taskId: WAN_FAILED,
+      transactionId: "cct_debit",
+      accountId: ACCOUNT,
+      generationId: "gen_poll_123456",
+    },
+    Date.now(),
+  );
+  const failedCreem = mockCreem(router({ balance: "2" }));
+  const failedDashscope = mockDashscope(async () => ({
+    body: {
+      output: {
+        task_id: WAN_FAILED,
+        task_status: "FAILED",
+        code: "DataInspectionFailed",
+        message: "sensitive content",
+      },
+    },
+  }));
+  const failed = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.83",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: failedCreem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: failedDashscope.fetchImpl,
+    }),
+  );
+  const failedText = await failed.text();
+  const failedBody = JSON.parse(failedText);
+  assert.equal(failed.status, 502);
+  assert.equal(failedBody.error, "generation_failed");
+  assert.equal(failedBody.refunded, true);
+  assert.equal(failedText.includes("sensitive"), false);
+  const reverse = failedCreem.calls.find((call) => call.path.endsWith("/reverse"));
+  assert.equal(reverse.body.transaction_id, "cct_debit");
+  assert.equal(creditGrant(failedCreem.calls).length, 0);
+
+  const stuck = mockCreem(router({ balance: "2", reverseFails: true }));
+  const pending = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.84",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: stuck.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: failedDashscope.fetchImpl,
+    }),
+  );
+  const pendingBody = await pending.json();
+  assert.equal(pending.status, 502);
+  assert.equal(pendingBody.error, "refund_pending");
+  assert.equal(pendingBody.transactionId, "cct_debit");
+  assert.equal(pendingBody.refunded, undefined);
+
+  const runningCreem = mockCreem(router({ balance: "2" }));
+  const running = mockDashscope(async () => ({
+    body: { output: { task_id: WAN_FAILED, task_status: "RUNNING" } },
+  }));
+  const still = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.85",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: runningCreem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: running.fetchImpl,
+    }),
+  );
+  const stillBody = await still.json();
+  assert.equal(still.status, 200);
+  assert.equal(stillBody.status, "processing");
+  assert.equal(stillBody.generation.status, "running");
+  assert.equal(stillBody.generation.videoUrl, undefined);
+  assert.equal(runningCreem.calls.some((call) => call.path.endsWith("/reverse")), false);
+
+  const blipCreem = mockCreem(router({ balance: "2" }));
+  const blip = mockDashscope(async () => ({ status: 500, body: { code: "InternalError", message: "busy" } }));
+  const retry = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.86",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: blipCreem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: blip.fetchImpl,
+    }),
+  );
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).status, "processing");
+  assert.equal(blipCreem.calls.length, 0);
+
+  const expiredCreem = mockCreem(router({ balance: "2" }));
+  const expired = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.91",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket },
+    }),
+    baseOptions({
+      creemFetch: expiredCreem.fetchImpl,
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: mockDashscope(async () => ({
+        body: { output: { task_id: WAN_FAILED, task_status: "UNKNOWN" } },
+      })).fetchImpl,
+    }),
+  );
+  const expiredBody = await expired.json();
+  assert.equal(expired.status, 410);
+  assert.equal(expiredBody.error, "video_expired");
+  assert.equal(expiredBody.refunded, undefined);
+  assert.equal(expiredCreem.calls.length, 0);
+});
+
+test("a status poll rejects a tampered ticket and another customer's ticket", async () => {
+  const ticket = await issueVideoTicket(
+    SESSION,
+    {
+      taskId: WAN_TASK,
+      transactionId: "cct_debit",
+      accountId: ACCOUNT,
+      generationId: "gen_poll_123456",
+    },
+    Date.now(),
+  );
+  const other = await issueVideoTicket(
+    SESSION,
+    {
+      taskId: WAN_TASK,
+      transactionId: "cct_debit",
+      accountId: "cca_other",
+      generationId: "gen_poll_123456",
+    },
+    Date.now(),
+  );
+  let providerCalls = 0;
+  const options = baseOptions({
+    creemFetch: mockCreem(router()).fetchImpl,
+    dashscopeApiKey: DASHSCOPE_KEY,
+    dashscopeFetch: async () => {
+      providerCalls += 1;
+      throw new Error("should not query");
+    },
+  });
+  const tampered = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.87",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket: `${ticket.slice(0, -1)}${ticket.endsWith("a") ? "b" : "a"}` },
+    }),
+    options,
+  );
+  assert.equal(tampered.status, 404);
+  const foreign = await handleRequest(
+    request("/v1/generations/status", {
+      ip: "203.0.113.88",
+      headers: { authorization: `Bearer ${await sessionToken()}` },
+      body: { ticket: other },
+    }),
+    options,
+  );
+  assert.equal(foreign.status, 404);
+  assert.equal(providerCalls, 0);
+});
+
+test("the free preview does not call DashScope or debit", async () => {
+  let providerCalls = 0;
+  const response = await handleRequest(
+    request("/v1/generate", { body: { effect: "dolly_zoom", image: PORTRAIT }, ip: "203.0.113.89" }),
+    baseOptions({
+      dashscopeApiKey: DASHSCOPE_KEY,
+      dashscopeFetch: async () => {
+        providerCalls += 1;
+        throw new Error("dashscope should not run for the free preview");
+      },
+      screenImpl: async () => ({ decision: "allow", id: "mod_free_video" }),
+    }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    decision: "allow",
+    moderationId: "mod_free_video",
+  });
+  assert.equal(providerCalls, 0);
+});
+
+test("health reports the video provider without the DashScope key", async () => {
+  const response = await handleRequest(new Request("https://proxy.example/health"), {
+    ...baseOptions(),
+    dashscopeApiKey: DASHSCOPE_KEY,
+  });
+  const text = await response.text();
+  assert.equal(JSON.parse(text).video, "ready");
+  assert.equal(text.includes(DASHSCOPE_KEY), false);
 });
 
 after(() => {

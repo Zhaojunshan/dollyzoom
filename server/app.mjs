@@ -1,5 +1,6 @@
 import { generationPermitted } from "../src/lib/moderationGate.mjs";
 import { creditsHealth, dispatchCredits } from "./credits.mjs";
+import { dashscopeConfigured, wanSettings } from "./dashscope.mjs";
 import {
   CREEM_PRODUCTION_MODERATION_URL,
   CREEM_SANDBOX_MODERATION_URL,
@@ -170,6 +171,7 @@ export async function handleRequest(request, options = {}) {
           webhookSecret: options.webhookSecret || "",
           sessionSecret: options.sessionSecret || "",
         }),
+        video: dashscopeConfigured(options.dashscopeApiKey || "") ? "ready" : "unconfigured",
       },
       200,
       origin,
@@ -185,6 +187,16 @@ export async function handleRequest(request, options = {}) {
     successUrl: options.successUrl,
     creemFetch: options.creemFetch,
     generateImpl: options.generateImpl,
+    dashscopeApiKey: options.dashscopeApiKey || "",
+    dashscopeFetch: options.dashscopeFetch,
+    videoFetch: options.videoFetch,
+    wan: options.wan || wanSettings({
+      resolution: options.wanResolution,
+      duration: options.wanDuration,
+      audio: options.wanAudio,
+      baseUrl: options.dashscopeBaseUrl,
+      region: options.dashscopeRegion,
+    }),
     now: options.now,
     originAllowed: isAllowedOrigin,
     takeRateLimit: (ipAddress, bucket) => rateLimit(ipAddress, limit, bucket),

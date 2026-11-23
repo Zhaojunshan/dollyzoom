@@ -1,6 +1,14 @@
 import { generationPermitted } from "../src/lib/moderationGate.mjs";
 import { CreemRequestError, createCreem } from "./creemApi.mjs";
 import {
+  issueVideoTicket,
+  parsePortraitDataUrl,
+  queryWanTask,
+  readVideoTicket,
+  startWanImageToVideo,
+  wanSettings,
+} from "./dashscope.mjs";
+import {
   GENERATION_WALLET_NAME,
   HD_PRODUCT_ID,
   MODERATION_MAX_AGE_MS,
@@ -80,11 +88,7 @@ export function classifyModeration(data, now) {
   return { ok: true, id };
 }
 
-export async function unimplementedGeneration() {
-  const error = new Error("generation_not_implemented");
-  error.code = "generation_not_implemented";
-  throw error;
-}
+const PAID_BODY_LIMIT = 18 * 1024 * 1024;
 
 async function ensureGenerationWallet(creem, customerId) {
   let startingAfter = "";
@@ -235,8 +239,10 @@ function debitFailure(error) {
 }
 
 /**
- * Balance, then screen, then debit with the moderation id, then the model hook.
- * The hook failing reverses that debit. A failed screen or debit never generates.
+ * Balance, then screen, then debit one credit with the moderation id, then
+ * start the video. A failed screen or debit never starts a video. If the
+ * video task is not accepted, or a processing task cannot be signed for
+ * polling, the debit is reversed.
  */
 export async function runPaidGeneration({
   creem,
@@ -247,6 +253,8 @@ export async function runPaidGeneration({
   now,
   screen,
   generate,
+  image,
+  signTicket,
 }) {
   let balance;
   try {
@@ -292,8 +300,28 @@ export async function runPaidGeneration({
       prompt,
       generationId,
       moderationId: decision.id,
+      image,
     });
-    const generation = raw === undefined ? null : raw;
+    let generation = raw === undefined ? null : raw;
+    if (
+      generation &&
+      typeof generation === "object" &&
+      generation.status === "processing"
+    ) {
+      if (typeof generation.taskId !== "string" || typeof signTicket !== "function") {
+        throw Object.assign(new Error("generation_failed"), { code: "generation_failed" });
+      }
+      const ticket = await signTicket({
+        taskId: generation.taskId,
+        transactionId: debit.id,
+        accountId: session.aid,
+        generationId,
+      });
+      if (typeof ticket !== "string" || !ticket.includes(".")) {
+        throw Object.assign(new Error("generation_failed"), { code: "generation_failed" });
+      }
+      generation = { ...generation, ticket };
+    }
     JSON.stringify(generation);
     return {
       outcome: "generated",
@@ -397,6 +425,8 @@ export async function dispatchCredits(request, ctx) {
     path === "/v1/credits/claim" ||
     path === "/v1/credits/checkout" ||
     path === "/v1/generations" ||
+    path === "/v1/generations/status" ||
+    path === "/v1/generations/file" ||
     path === "/v1/creem/webhook";
   if (!known) return null;
 
@@ -419,6 +449,8 @@ export async function dispatchCredits(request, ctx) {
   if (path === "/v1/credits/claim" && method === "POST") return handleClaim(request, ctx);
   if (path === "/v1/credits/checkout" && method === "POST") return handleCheckout(request, ctx);
   if (path === "/v1/generations" && method === "POST") return handlePaid(request, ctx);
+  if (path === "/v1/generations/status" && method === "POST") return handleGenerationStatus(request, ctx);
+  if (path === "/v1/generations/file" && method === "GET") return handleGenerationFile(request, ctx);
   return json({ ok: false, error: "not_found" }, 404);
 }
 
@@ -526,11 +558,21 @@ async function handlePaid(request, ctx) {
   const ready = await requireReady(ctx, request);
   if (!ready.session) return ready.error;
 
-  const parsed = await readJsonBody(request, 4000);
-  if (parsed.error === "too_large") return ctx.json({ ok: false, error: "prompt_too_long" }, 400);
+  const declared = Number(request.headers.get("content-length") || "0");
+  if (Number.isFinite(declared) && declared > PAID_BODY_LIMIT) {
+    return ctx.json({ ok: false, error: "image_too_large" }, 413);
+  }
+  const parsed = await readJsonBody(request, PAID_BODY_LIMIT);
+  if (parsed.error === "too_large") return ctx.json({ ok: false, error: "image_too_large" }, 413);
   if (parsed.error) return ctx.json({ ok: false, error: "bad_request" }, 400);
   const selected = ctx.selectPrompt(parsed.body || {});
   if (selected.error) return ctx.json({ ok: false, error: selected.error }, 400);
+
+  const portrait = parsePortraitDataUrl(parsed.body?.image);
+  if (typeof ctx.generateImpl !== "function" && portrait.error) {
+    const status = portrait.error === "image_too_large" ? 413 : 400;
+    return ctx.json({ ok: false, error: portrait.error }, status);
+  }
 
   const generationId = normalizeGenerationId(parsed.body?.generationId);
   const creem = creemFor(ctx);
@@ -542,7 +584,18 @@ async function handlePaid(request, ctx) {
     cost: ready.cost,
     now: nowOf(ctx),
     screen: ctx.screen,
-    generate: ctx.generateImpl || unimplementedGeneration,
+    image: portrait.dataUrl || "",
+    signTicket: (fields) => issueVideoTicket(ctx.sessionSecret, fields, nowOf(ctx)),
+    generate:
+      ctx.generateImpl ||
+      ((args) =>
+        startWanImageToVideo({
+          apiKey: ctx.dashscopeApiKey || "",
+          fetchImpl: ctx.dashscopeFetch || fetch,
+          prompt: args.prompt,
+          image: args.image,
+          settings: wanOf(ctx),
+        })),
   });
 
   if (result.outcome === "insufficient") {
@@ -596,6 +649,153 @@ async function handlePaid(request, ctx) {
       moderationId: result.moderationId,
       transactionId: result.transactionId,
       generation: result.generation,
+    },
+    200,
+  );
+}
+
+function wanOf(ctx) {
+  return ctx.wan || wanSettings();
+}
+
+function videoGeneration(ctx, status, taskId, extra = {}) {
+  const settings = wanOf(ctx);
+  return {
+    provider: "dashscope",
+    model: settings.model,
+    status,
+    taskId,
+    resolution: settings.resolution,
+    duration: settings.duration,
+    audio: settings.audio,
+    ...extra,
+  };
+}
+
+function generationExtras(query) {
+  const extra = { videoUrl: query.videoUrl };
+  if (query.expiresAt) extra.expiresAt = new Date(query.expiresAt).toISOString();
+  return extra;
+}
+
+/**
+ * Poll a paid task. queued/running stay processing. succeeded returns the
+ * https video URL. failed/cancelled reverses the original debit. A query
+ * outage stays processing so a blip does not refund a video that may finish.
+ */
+async function handleGenerationStatus(request, ctx) {
+  const header = bearerToken(request.headers.get("authorization"));
+  if (!header) return ctx.json(neededBody(), 401);
+  const ready = await requireReady(ctx, request);
+  if (!ready.session) return ready.error;
+
+  const parsed = await readJsonBody(request, 8000);
+  if (parsed.error) return ctx.json({ ok: false, error: "bad_request" }, 400);
+  const ticketValue = parsed.body && typeof parsed.body.ticket === "string" ? parsed.body.ticket : "";
+  const ticket = await readVideoTicket(ctx.sessionSecret, ticketValue, nowOf(ctx));
+  if (!ticket || ticket.aid !== ready.session.aid) {
+    return ctx.json({ ok: false, error: "generation_not_found" }, 404);
+  }
+
+  const query = await queryWanTask({
+    apiKey: ctx.dashscopeApiKey || "",
+    fetchImpl: ctx.dashscopeFetch || fetch,
+    taskId: ticket.taskId,
+    settings: wanOf(ctx),
+  });
+  return settleVideoQuery(ctx, ready.session, ticket, query);
+}
+
+/**
+ * The DashScope mp4 link expires in about 24 hours. This same-origin download
+ * re-checks the task and streams the current file as an attachment so the
+ * customer can save it while the link is still valid.
+ */
+async function handleGenerationFile(request, ctx) {
+  if (!sessionConfigured(ctx.sessionSecret)) {
+    return ctx.json({ ok: false, error: "credits_unavailable" }, 503);
+  }
+  const ticket = await readVideoTicket(
+    ctx.sessionSecret,
+    new URL(request.url).searchParams.get("ticket") || "",
+    nowOf(ctx),
+  );
+  if (!ticket) return ctx.json({ ok: false, error: "generation_not_found" }, 404);
+  const query = await queryWanTask({
+    apiKey: ctx.dashscopeApiKey || "",
+    fetchImpl: ctx.dashscopeFetch || fetch,
+    taskId: ticket.taskId,
+    settings: wanOf(ctx),
+  });
+  if (query.outcome === "failed") {
+    try {
+      await reverseDebit(creemFor(ctx), ticket.aid, ticket.transactionId);
+    } catch {
+      return ctx.json({ ok: false, error: "refund_pending", transactionId: ticket.transactionId }, 502);
+    }
+    return ctx.json({ ok: false, error: "generation_failed", refunded: true }, 502);
+  }
+  if (query.outcome !== "succeeded") {
+    return ctx.json({ ok: false, error: query.outcome === "expired" ? "video_expired" : "video_pending" }, 404);
+  }
+  let upstream;
+  try {
+    upstream = await (ctx.videoFetch || fetch)(query.videoUrl);
+  } catch {
+    return ctx.json({ ok: false, error: "video_expired" }, 502);
+  }
+  if (!upstream.ok || !upstream.body) return ctx.json({ ok: false, error: "video_expired" }, 502);
+  const headers = new Headers();
+  headers.set("content-type", "video/mp4");
+  headers.set("content-disposition", 'attachment; filename="dollyzoom-hd.mp4"');
+  headers.set("cache-control", "private, no-store");
+  const length = upstream.headers.get("content-length");
+  if (length && /^[0-9]+$/.test(length)) headers.set("content-length", length);
+  return new Response(upstream.body, { status: 200, headers });
+}
+
+async function settleVideoQuery(ctx, session, ticket, query) {
+  if (query.outcome === "succeeded") {
+    return ctx.json(
+      {
+        ok: true,
+        status: "succeeded",
+        generation: videoGeneration(ctx, "succeeded", ticket.taskId, generationExtras(query)),
+      },
+      200,
+    );
+  }
+  if (query.outcome === "expired") {
+    return ctx.json({ ok: false, error: "video_expired" }, 410);
+  }
+  if (query.outcome === "failed") {
+    try {
+      await reverseDebit(creemFor(ctx), session.aid, ticket.transactionId);
+    } catch {
+      return ctx.json(
+        {
+          ok: false,
+          error: "refund_pending",
+          transactionId: ticket.transactionId,
+        },
+        502,
+      );
+    }
+    return ctx.json(
+      {
+        ok: false,
+        error: "generation_failed",
+        refunded: true,
+      },
+      502,
+    );
+  }
+  const status = query.status === "queued" || query.status === "running" ? query.status : "processing";
+  return ctx.json(
+    {
+      ok: true,
+      status: "processing",
+      generation: videoGeneration(ctx, status, ticket.taskId),
     },
     200,
   );
