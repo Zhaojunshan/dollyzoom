@@ -228,6 +228,8 @@ test("public files and the exporter do not carry a live-trade payload", () => {
       assert.equal(text.includes("creem.io"), false, file);
       assert.equal(text.includes("dolly-zoom"), false, file);
       assert.equal(text.includes("order_send"), false, file);
+      assert.equal(text.toLowerCase().includes("mailto:"), false, file);
+      assert.equal(text.includes("Zjs315416174"), false, file);
     }, skip);
   }
 });

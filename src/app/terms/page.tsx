@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { LegalDocument } from "@/components/LegalDocument";
-import { OPERATOR_NAME, SITE_URL, SUPPORT_EMAIL } from "@/lib/site";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "使用条款",
@@ -14,7 +14,7 @@ export default function TermsPage() {
   return (
     <LegalDocument title="使用条款" updated="2026-11-24">
       <p>
-        这些条款适用于 {SITE_URL} 上的交易观察。运营者是 {OPERATOR_NAME}（“我们”）。这是一个展示已平仓记录和提供浏览器本地计算的网站，不是经纪商、投资顾问或交易终端。
+        这些条款适用于 {SITE_URL} 上的交易观察（“我们”）。这是一个展示已平仓记录和提供浏览器本地计算的网站，不是经纪商、投资顾问或交易终端。
       </p>
       <h2>服务范围</h2>
       <p>
@@ -39,9 +39,7 @@ export default function TermsPage() {
         网站按现状提供。我们不保证数据完整、计算符合某一家经纪商的合约规格，也不保证网站不中断。在法律允许的范围内，我们不对使用本站造成的交易损失负责。本地日记存在你的浏览器里，清除站点数据后我们无法恢复。
       </p>
       <h2>联系</h2>
-      <p>
-        条款问题请发邮件到 <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>。本站没有留言表单。
-      </p>
+      <p>本站没有联系表单，也不在页面上公布个人邮箱。不要把账户凭证发到这个网站，这里没有接收它的入口。</p>
     </LegalDocument>
   );
 }

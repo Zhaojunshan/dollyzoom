@@ -64,31 +64,32 @@ export function SeriesChart({
         role="img"
         aria-labelledby={titleId}
         viewBox={`0 0 ${width} ${height}`}
-        className="mt-3 h-auto w-full"
+        className="mt-3 h-auto w-full rounded-lg bg-plot"
       >
+        <rect x={pad.left} y={pad.top} width={width - pad.left - pad.right} height={height - pad.top - pad.bottom} fill="#0c1422" />
         {ticks.map((tick) => (
           <g key={tick}>
-            <line x1={pad.left} x2={width - pad.right} y1={yOf(tick)} y2={yOf(tick)} stroke="#e4dccb" />
-            <text x={pad.left - 8} y={yOf(tick) + 4} textAnchor="end" fill="#4f493f" fontSize="11">
+            <line x1={pad.left} x2={width - pad.right} y1={yOf(tick)} y2={yOf(tick)} stroke="#243044" />
+            <text x={pad.left - 8} y={yOf(tick) + 4} textAnchor="end" fill="#c5d0e4" fontSize="11" fontFamily="ui-monospace, monospace">
               {formatMoney(tick, null)}
             </text>
           </g>
         ))}
-        {usable.map((item) => (
-          <polyline
-            key={item.id}
-            fill="none"
-            stroke={item.color}
-            strokeWidth="2.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            points={item.points.map((point) => `${xOf(point.time)},${yOf(point.value)}`).join(" ")}
-          />
-        ))}
-        <text x={pad.left} y={height - 8} fill="#4f493f" fontSize="11">
+        {usable.map((item) => {
+          const line = item.points.map((point) => `${xOf(point.time)},${yOf(point.value)}`).join(" ");
+          const baseline = yOf(Math.min(maxV, Math.max(minV, 0)));
+          const area = `${pad.left},${baseline} ${line} ${xOf(item.points[item.points.length - 1].time)},${baseline}`;
+          return (
+            <g key={item.id}>
+              <polygon points={area} fill={item.color} opacity="0.14" />
+              <polyline points={line} fill="none" stroke={item.color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+            </g>
+          );
+        })}
+        <text x={pad.left} y={height - 8} fill="#c5d0e4" fontSize="11">
           {formatTime(new Date(minT).toISOString(), timeZone)}
         </text>
-        <text x={width - pad.right} y={height - 8} textAnchor="end" fill="#4f493f" fontSize="11">
+        <text x={width - pad.right} y={height - 8} textAnchor="end" fill="#c5d0e4" fontSize="11">
           {formatTime(new Date(maxT).toISOString(), timeZone)}
         </text>
       </svg>

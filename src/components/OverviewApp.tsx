@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { BreakdownPanel } from "@/components/BreakdownPanel";
 import { MetricGrid } from "@/components/MetricGrid";
 import { SeriesChart } from "@/components/SeriesChart";
 import { TradeTable } from "@/components/TradeTable";
@@ -50,11 +51,14 @@ export function OverviewApp() {
 
   useEffect(() => {
     let cancel = false;
-    queueMicrotask(() => {
+    const apply = () => {
       if (!cancel) setMode(window.localStorage.getItem(DEMO_KEY) === "1" ? "demo" : "public");
-    });
+    };
+    queueMicrotask(apply);
+    window.addEventListener("tj-demo", apply);
     return () => {
       cancel = true;
+      window.removeEventListener("tj-demo", apply);
     };
   }, []);
 
@@ -103,7 +107,7 @@ export function OverviewApp() {
   return (
     <div className="mt-8 space-y-4">
       {mode === "demo" ? (
-        <div className="rounded-2xl border border-warning/30 bg-warning-bg px-4 py-3 text-sm leading-6 text-warning" role="status">
+        <div className="rounded-xl border border-warning bg-warning-bg px-4 py-3 text-sm leading-6 text-warning" role="status">
           <p className="font-semibold">示例数据 DEMO</p>
           <p>
             这些数字是虚构的，只用来看界面。它们不是你的账户，也不是已验证战绩。这个标记会一直留着，直到你关闭示例。关闭后回到未连接或已发布文件，不会把示例写成真实结果。
@@ -141,12 +145,12 @@ export function OverviewApp() {
 
       <div className="flex flex-wrap gap-2">
         {mode === "demo" ? (
-          <button type="button" className="rounded-full bg-accent px-4 py-2 text-sm text-white" onClick={() => setDemo(false)}>
+          <button type="button" className="btn btn-primary" onClick={() => setDemo(false)}>
             关闭示例，回到已发布文件
           </button>
         ) : (
-          <button type="button" className="rounded-full border border-card-border bg-card px-4 py-2 text-sm" onClick={() => setDemo(true)}>
-            查看虚构示例
+          <button type="button" className="btn btn-ghost" onClick={() => setDemo(true)}>
+            查看示例
           </button>
         )}
       </div>
@@ -213,11 +217,11 @@ function Dashboard({ model }: { model: NonNullable<ReturnType<typeof buildViewMo
             }
             series={[
               model.balanceSeries.available
-                ? { id: "balance", label: "已实现余额", color: "#1f4d3a", points: model.balanceSeries.points }
-                : { id: "balance", label: "已实现余额", color: "#1f4d3a", points: [] },
+                ? { id: "balance", label: "已实现余额", color: "#9ec1ff", points: model.balanceSeries.points }
+                : { id: "balance", label: "已实现余额", color: "#9ec1ff", points: [] },
               model.equitySeries.points.length
-                ? { id: "equity", label: "权益快照", color: "#8a5a12", points: model.equitySeries.points }
-                : { id: "equity", label: "权益快照", color: "#8a5a12", points: [] },
+                ? { id: "equity", label: "权益快照", color: "#e6b84d", points: model.equitySeries.points }
+                : { id: "equity", label: "权益快照", color: "#e6b84d", points: [] },
             ]}
           />
         </div>
@@ -247,7 +251,7 @@ function Dashboard({ model }: { model: NonNullable<ReturnType<typeof buildViewMo
           {
             id: "pnl",
             label: "累计净盈亏",
-            color: "#3d4f73",
+            color: "#6ee7b7",
             points: model.realizedPnlDrawdown.points,
           },
         ]}
@@ -269,6 +273,7 @@ function Dashboard({ model }: { model: NonNullable<ReturnType<typeof buildViewMo
         timeZone={model.timezone}
         empty={model.status === "unconnected" ? "没有已平仓记录。文件仍是未连接，不是一份空的真实历史。" : "这份快照里没有已平仓记录。胜率因此未知。"}
       />
+      <BreakdownPanel view={model} />
     </div>
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { BreakdownPanel } from "@/components/BreakdownPanel";
 import { MetricGrid } from "@/components/MetricGrid";
 import { TradeTable } from "@/components/TradeTable";
 import { formatLots, formatSignedMoney } from "@/lib/format.mjs";
@@ -146,12 +148,15 @@ export function ToolsApp() {
 
   return (
     <div className="mt-8 space-y-8">
-      <section className="rounded-2xl border border-card-border bg-card px-4 py-5 sm:px-5" aria-labelledby="size-heading">
+      <section id="size" className="panel px-4 py-5 sm:px-5" aria-labelledby="size-heading">
         <h2 id="size-heading" className="text-xl font-semibold">
           仓位计算 <span className="text-base font-normal text-muted">Position size</span>
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
           手数按风险金额向下取整到手数步长，避免四舍五入后亏得比计划多。请自己填写 tick size 和 tick value。这里没有品种表，也不会把黄金当成 0.0001 的外汇点值。
+          <Link href="/guide/position-size/" className="ml-1 text-accent underline underline-offset-4">
+            看 XAUUSD 的常见填法错误
+          </Link>
         </p>
         <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
           <Field label="账户货币 Account currency" value={form.accountCurrency} placeholder="USD" inputMode="text" onChange={(value) => update("accountCurrency", value)} />
@@ -192,7 +197,7 @@ export function ToolsApp() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-card-border bg-card px-4 py-5 sm:px-5" aria-labelledby="journal-heading">
+      <section id="journal" className="panel px-4 py-5 sm:px-5" aria-labelledby="journal-heading">
         <h2 id="journal-heading" className="text-xl font-semibold">
           本地日记 <span className="text-base font-normal text-muted">Local journal</span>
         </h2>
@@ -219,7 +224,7 @@ export function ToolsApp() {
                 void onFile(event.target.files?.[0]);
                 event.target.value = "";
               }}
-              className="block w-full text-sm file:mr-3 file:rounded-full file:border-0 file:bg-accent file:px-3 file:py-2 file:text-white disabled:opacity-50"
+              className="block w-full max-w-full text-sm file:mr-3 file:rounded-full file:border-0 file:bg-accent file:px-3 file:py-2 file:font-semibold file:text-[#061018] disabled:opacity-50"
             />
           </label>
           <button type="button" className="rounded-full border border-card-border px-4 py-2 text-sm" onClick={() => void loadSample()}>
@@ -244,6 +249,7 @@ export function ToolsApp() {
           <div className="mt-5 space-y-4">
             <p className="text-sm font-medium">未发布 · 只在这台浏览器</p>
             <MetricGrid model={view} />
+            <BreakdownPanel view={view} />
             <TradeTable
               trades={view.trades}
               currency={view.currency}
@@ -251,10 +257,13 @@ export function ToolsApp() {
               empty="本地日记里没有已平仓记录。"
             />
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="rounded-full bg-accent px-4 py-2 text-sm text-white" onClick={exportCsv}>
+              <button type="button" className="btn btn-primary" onClick={exportCsv}>
                 导出 CSV
               </button>
-              <button type="button" className="rounded-full border border-card-border px-4 py-2 text-sm" onClick={clearJournal}>
+              <Link href="/pricing/" className="btn btn-ghost">
+                这些分析现在免费
+              </Link>
+              <button type="button" className="btn btn-ghost" onClick={clearJournal}>
                 清除本地日记
               </button>
             </div>
@@ -262,16 +271,21 @@ export function ToolsApp() {
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-dashed border-card-border px-4 py-5 sm:px-5" aria-labelledby="planned-heading">
+      <section className="panel border-dashed px-4 py-5 sm:px-5" aria-labelledby="planned-heading">
         <h2 id="planned-heading" className="text-xl font-semibold">
           进阶分析 · 计划中
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          更细的统计和风险报告还没做。示意价格是 ${PLANNED_MONTHLY_USD}/月，只说明以后可能怎么收费，现在不能购买，也没有付款成功或登录。
+          上面的仓位计算、品种和月份汇总、费用拖累和 CSV 导出已经免费可用，没有被锁住。还没做的是多段对照和更长的风险报告。示意价格是 ${PLANNED_MONTHLY_USD}/月，只说明以后可能怎么收费，现在不能购买，也没有付款成功或登录。
         </p>
-        <button type="button" className="mt-4 cursor-not-allowed rounded-full bg-card-border px-4 py-2 text-sm" disabled>
-          订阅尚未开放
-        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/pricing/" className="btn btn-ghost">
+            看价格对照
+          </Link>
+          <button type="button" className="btn btn-ghost cursor-not-allowed opacity-60" disabled>
+            订阅尚未开放
+          </button>
+        </div>
       </section>
     </div>
   );

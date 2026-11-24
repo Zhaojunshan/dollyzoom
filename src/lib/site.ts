@@ -1,10 +1,8 @@
-/** Public site facts. No secrets and no checkout URL. */
+/** Public site facts. No secrets, no checkout URL, and no personal contact address. */
 
 export const SITE_URL = "https://dollyzoom.top";
 export const SITE_NAME = "交易观察";
 export const SITE_NAME_EN = "Trade Journal";
-export const OPERATOR_NAME = "junshan zhao";
-export const SUPPORT_EMAIL = "Zjs315416174@gmail.com";
 export const PLANNED_MONTHLY_USD = 9;
 
 /**

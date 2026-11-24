@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { LegalDocument } from "@/components/LegalDocument";
-import { SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "可接受使用",
@@ -31,9 +30,7 @@ export default function AcceptableUsePage() {
       </ul>
       <h2>年龄</h2>
       <p>本站讨论交易记录，不面向 18 岁以下的人。</p>
-      <p>
-        发现公开文件里出现了不该出现的凭证，请邮件联系 <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>，并换掉相关密码。本站没有在线表单。
-      </p>
+      <p>本站没有接收凭证或留言的表单。如果一份准备公开的文件里出现了凭证，不要上传它，并在你自己的经纪商处更换相关密码。</p>
     </LegalDocument>
   );
 }
