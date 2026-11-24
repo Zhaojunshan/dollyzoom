@@ -64,61 +64,61 @@ export function TradeTable({
       <div className="flex flex-wrap items-end justify-between gap-3 px-1">
         <div>
           <h2 id="closed-trades-heading" className="text-lg font-semibold">
-            已平仓记录
+            Closed trades
           </h2>
-          <p className="mt-1 text-sm text-muted">只列出已经完全平仓的回合。公开页不显示未平仓。</p>
+          <p className="mt-1 text-sm text-muted">Fully closed round turns only. Open positions are not listed.</p>
         </div>
         <p className="text-sm text-muted">
-          {filtered.length === 0 ? "0 条符合筛选" : `第 ${start + 1}–${start + visible.length} 条，共 ${filtered.length} 条`}
+          {filtered.length === 0 ? "0 matches" : `${start + 1}–${start + visible.length} of ${filtered.length}`}
         </p>
       </div>
       <form className="mt-4 grid gap-3 sm:grid-cols-3" onSubmit={(event) => event.preventDefault()}>
         <label className="block text-sm">
-          <span className="text-muted">品种 Symbol</span>
+          <span className="text-muted">Symbol</span>
           <input
             value={symbol}
             onChange={(event) => update(setSymbol, event.target.value)}
             className="mt-1 w-full rounded-xl border border-card-border bg-background px-3 py-2"
-            placeholder="例如 EURUSD"
+            placeholder="For example EURUSD"
           />
         </label>
         <label className="block text-sm">
-          <span className="text-muted">方向 Side</span>
+          <span className="text-muted">Side</span>
           <select
             value={side}
             onChange={(event) => update(setSide, event.target.value)}
             className="mt-1 w-full rounded-xl border border-card-border bg-background px-3 py-2"
           >
-            <option value="all">全部</option>
-            <option value="buy">买入 buy</option>
-            <option value="sell">卖出 sell</option>
+            <option value="all">All</option>
+            <option value="buy">Buy</option>
+            <option value="sell">Sell</option>
           </select>
         </label>
         <label className="block text-sm">
-          <span className="text-muted">结果</span>
+          <span className="text-muted">Result</span>
           <select
             value={outcome}
             onChange={(event) => update(setOutcome, event.target.value)}
             className="mt-1 w-full rounded-xl border border-card-border bg-background px-3 py-2"
           >
-            <option value="all">全部</option>
-            <option value="win">净盈利</option>
-            <option value="loss">净亏损</option>
-            <option value="flat">打平</option>
+            <option value="all">All</option>
+            <option value="win">Net gain</option>
+            <option value="loss">Net loss</option>
+            <option value="flat">Flat</option>
           </select>
         </label>
       </form>
 
       {visible.length === 0 ? (
-        <p className="mt-4 px-1 text-sm leading-6 text-muted">{trades.length === 0 ? empty : "没有符合筛选条件的已平仓记录。"}</p>
+        <p className="mt-4 px-1 text-sm leading-6 text-muted">{trades.length === 0 ? empty : "No closed trades match these filters."}</p>
       ) : (
         <>
           <div className="mt-4 hidden overflow-x-auto md:block">
             <table className="w-full min-w-[720px] text-left text-sm">
-              <caption className="sr-only">已平仓交易</caption>
+              <caption className="sr-only">Closed trades</caption>
               <thead className="text-muted">
                 <tr>
-                  {["品种", "方向", "手数", "平仓时间", "开/平价格", "价格盈亏", "佣金与库存费", "净盈亏"].map((heading) => (
+                  {["Symbol", "Side", "Lots", "Close time", "Open / close", "Price P&L", "Fees", "Net"].map((heading) => (
                     <th key={heading} scope="col" className="px-2 py-2 font-medium">
                       {heading}
                     </th>
@@ -131,10 +131,10 @@ export function TradeTable({
                     <td className="px-2 py-3 font-medium">
                       {trade.symbol}
                       {trade.partialCloses > 1 ? (
-                        <span className="mt-1 block text-xs font-normal text-muted">部分平仓合并 × {trade.partialCloses}</span>
+                        <span className="mt-1 block text-xs font-normal text-muted">Partial closes combined × {trade.partialCloses}</span>
                       ) : null}
                     </td>
-                    <td className="px-2 py-3">{trade.side === "buy" ? "买入" : "卖出"}</td>
+                    <td className="px-2 py-3">{trade.side === "buy" ? "Buy" : "Sell"}</td>
                     <td className="num px-2 py-3">{formatPrice(trade.volume)}</td>
                     <td className="px-2 py-3">
                       <time dateTime={trade.closeTime}>{formatTime(trade.closeTime, timeZone)}</time>
@@ -161,9 +161,9 @@ export function TradeTable({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium">
-                      {trade.symbol} · {trade.side === "buy" ? "买入" : "卖出"}
+                      {trade.symbol} · {trade.side === "buy" ? "Buy" : "Sell"}
                     </p>
-                    <p className="text-sm text-muted">{formatPrice(trade.volume)} 手</p>
+                    <p className="text-sm text-muted">{formatPrice(trade.volume)} lots</p>
                   </div>
                   <p className={`num text-right ${trade.net < 0 ? "text-negative" : trade.net > 0 ? "text-positive" : ""}`}>
                     <span className="sr-only">{signedWord(trade.net)}</span>
@@ -172,27 +172,27 @@ export function TradeTable({
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-2 text-sm">
                   <div>
-                    <dt className="text-muted">平仓</dt>
+                    <dt className="text-muted">Close</dt>
                     <dd>
                       <time dateTime={trade.closeTime}>{formatTime(trade.closeTime, timeZone)}</time>
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted">价格</dt>
+                    <dt className="text-muted">Price</dt>
                     <dd className="num">
                       {formatPrice(trade.openPrice)} → {formatPrice(trade.closePrice)}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-muted">价格盈亏</dt>
+                    <dt className="text-muted">Price P&L</dt>
                     <dd className="num">{formatSignedMoney(trade.profit, currency)}</dd>
                   </div>
                   <div>
-                    <dt className="text-muted">佣金 + 库存费</dt>
+                    <dt className="text-muted">Commission + swap</dt>
                     <dd className="num">{formatSignedMoney(trade.commission + trade.swap, currency)}</dd>
                   </div>
                 </dl>
-                {trade.partialCloses > 1 ? <p className="mt-2 text-xs text-muted">部分平仓合并 × {trade.partialCloses}</p> : null}
+                {trade.partialCloses > 1 ? <p className="mt-2 text-xs text-muted">Partial closes combined × {trade.partialCloses}</p> : null}
               </li>
             ))}
           </ul>
@@ -206,10 +206,10 @@ export function TradeTable({
             onClick={() => setPage(current - 1)}
             disabled={current === 1}
           >
-            上一页
+            Previous
           </button>
           <p className="text-sm text-muted">
-            第 {current} / {pages} 页
+            Page {current} of {pages}
           </p>
           <button
             type="button"
@@ -217,7 +217,7 @@ export function TradeTable({
             onClick={() => setPage(current + 1)}
             disabled={current === pages}
           >
-            下一页
+            Next
           </button>
         </div>
       ) : null}

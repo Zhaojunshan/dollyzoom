@@ -15,17 +15,17 @@ import { browserPublicPath, PLANNED_MONTHLY_USD } from "@/lib/site";
 const JOURNAL_KEY = "tj.journal.v1";
 
 const FIELD_ERROR: Record<string, string> = {
-  tickSize: "Tick size 需要是大于 0 的价格间隔。",
-  tickValue: "Tick value 需要是大于 0 的金额：账户货币 / 每 1 手 / 每个 tick。",
-  volumeStep: "手数步长需要大于 0。",
-  minLot: "最小手数需要大于 0。",
-  maxLot: "最大手数需要大于 0，并且不小于最小手数。",
-  stopDistance: "止损距离需要是大于 0 的价格差，不是某个品种默认的“点”。",
-  riskAmount: "风险金额需要大于 0。",
-  accountCurrency: "账户货币用三位字母，例如 USD。",
-  "minLot-step": "最小手数必须是手数步长的整数倍。",
-  "maxLot-step": "最大手数必须是手数步长的整数倍。",
-  lossPerLot: "按这些输入算不出每手亏损。",
+  tickSize: "Tick size must be a price increment greater than 0.",
+  tickValue: "Tick value must be greater than 0, in account currency per 1 lot per tick.",
+  volumeStep: "Volume step must be greater than 0.",
+  minLot: "Minimum lot must be greater than 0.",
+  maxLot: "Maximum lot must be greater than 0 and at least the minimum lot.",
+  stopDistance: "Stop distance must be a price difference greater than 0, not a default pip.",
+  riskAmount: "Risk amount must be greater than 0.",
+  accountCurrency: "Use a three-letter account currency, for example USD.",
+  "minLot-step": "Minimum lot must be a whole number of volume steps.",
+  "maxLot-step": "Maximum lot must be a whole number of volume steps.",
+  lossPerLot: "These inputs do not produce a loss per lot.",
 };
 
 const EMPTY_FORM = {
@@ -56,12 +56,12 @@ export function ToolsApp() {
         try {
           const stored = JSON.parse(raw) as StoredJournal;
           if (stored?.published !== false || stored?.feed?.source !== "local-journal") {
-            setErrors(["浏览器里的旧日记格式不能用，没有加载。"]);
+            setErrors(["A stored journal in this browser is not in a usable shape, so it was not loaded."]);
           } else {
             setJournal(stored);
           }
         } catch {
-          setErrors(["浏览器里的日记无法读取。"]);
+          setErrors(["The journal stored in this browser could not be read."]);
         }
       }
       setJournalReady(true);
@@ -88,7 +88,7 @@ export function ToolsApp() {
   async function onFile(file: File | undefined) {
     if (!file) return;
     if (!acknowledged) {
-      setErrors(["请先勾选：导入只留在这台浏览器，不会因此公开。"]);
+      setErrors(["Check the box first: an import stays in this browser and is not published."]);
       return;
     }
     const text = await file.text();
@@ -105,28 +105,28 @@ export function ToolsApp() {
     }
     saveJournal(parsed.journal);
     setErrors([]);
-    setImportNote("已保存在这台浏览器。没有上传，也没有写入公开概览。");
+    setImportNote("Saved in this browser. Nothing was uploaded, and the public overview was not changed.");
   }
 
   async function loadSample() {
     const response = await fetch(browserPublicPath("/data/demo-performance.json"), { cache: "no-store" });
     if (!response.ok) {
-      setErrors(["虚构示例文件没有读到。"]);
+      setErrors(["The fictional sample file could not be read."]);
       return;
     }
     const parsed = parseFeed(await response.json());
     if (!parsed.ok || parsed.feed.source !== "demo") {
-      setErrors(["示例文件不能载入本地日记。"]);
+      setErrors(["The sample file cannot be loaded into the local journal."]);
       return;
     }
     saveJournal({
       ...parsed.feed,
       source: "local-journal",
-      account: { class: "unknown", verified: false, label: "本地日记" },
-      freshness: { kind: "static-snapshot", note: "由虚构示例载入的本地日记，未发布。" },
+      account: { class: "unknown", verified: false, label: "Local journal" },
+      freshness: { kind: "static-snapshot", note: "Local journal loaded from the fictional sample. Not published." },
     });
     setErrors([]);
-    setImportNote("虚构示例已放进本地日记，并标成未发布。公开概览不会因此改变。");
+    setImportNote("The fictional sample is in the local journal and marked unpublished. The public overview is unchanged.");
   }
 
   function exportCsv() {
@@ -143,48 +143,48 @@ export function ToolsApp() {
   function clearJournal() {
     window.localStorage.removeItem(JOURNAL_KEY);
     setJournal(null);
-    setImportNote("本地日记已从这台浏览器删除。");
+    setImportNote("The local journal was removed from this browser.");
   }
 
   return (
     <div className="mt-8 space-y-8">
       <section id="size" className="panel px-4 py-5 sm:px-5" aria-labelledby="size-heading">
         <h2 id="size-heading" className="text-xl font-semibold">
-          仓位计算 <span className="text-base font-normal text-muted">Position size</span>
+          Position size
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          手数按风险金额向下取整到手数步长，避免四舍五入后亏得比计划多。请自己填写 tick size 和 tick value。这里没有品种表，也不会把黄金当成 0.0001 的外汇点值。
-          <Link href="/guide/position-size/" className="ml-1 text-accent underline underline-offset-4">
-            看 XAUUSD 的常见填法错误
+          Lots are floored to the volume step so rounding does not spend more than the risk amount. Type tick size and tick value yourself. There is no symbol table, and gold is not treated as a 0.0001 FX pip.{" "}
+          <Link href="/guide/position-size/" className="text-accent underline underline-offset-4">
+            Common XAUUSD mistakes
           </Link>
         </p>
         <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
-          <Field label="账户货币 Account currency" value={form.accountCurrency} placeholder="USD" inputMode="text" onChange={(value) => update("accountCurrency", value)} />
-          <Field label="Tick size" value={form.tickSize} placeholder="价格最小变动，例如 0.01" onChange={(value) => update("tickSize", value)} />
-          <Field label="Tick value / 1 手" value={form.tickValue} placeholder="账户货币，每个 tick" onChange={(value) => update("tickValue", value)} />
-          <Field label="手数步长 Volume step" value={form.volumeStep} placeholder="例如 0.01" onChange={(value) => update("volumeStep", value)} />
-          <Field label="最小手数 Min lot" value={form.minLot} placeholder="例如 0.01" onChange={(value) => update("minLot", value)} />
-          <Field label="最大手数 Max lot，可空" value={form.maxLot} placeholder="不限制就留空" onChange={(value) => update("maxLot", value)} />
-          <Field label="止损距离 Stop distance" value={form.stopDistance} placeholder="价格单位，不是默认点数" onChange={(value) => update("stopDistance", value)} />
-          <Field label="风险金额 Risk amount" value={form.riskAmount} placeholder="账户货币" onChange={(value) => update("riskAmount", value)} />
+          <Field label="Account currency" value={form.accountCurrency} placeholder="USD" inputMode="text" onChange={(value) => update("accountCurrency", value)} />
+          <Field label="Tick size" value={form.tickSize} placeholder="Minimum price change, for example 0.01" onChange={(value) => update("tickSize", value)} />
+          <Field label="Tick value per 1 lot" value={form.tickValue} placeholder="Account currency per tick" onChange={(value) => update("tickValue", value)} />
+          <Field label="Volume step" value={form.volumeStep} placeholder="For example 0.01" onChange={(value) => update("volumeStep", value)} />
+          <Field label="Minimum lot" value={form.minLot} placeholder="For example 0.01" onChange={(value) => update("minLot", value)} />
+          <Field label="Maximum lot, optional" value={form.maxLot} placeholder="Leave blank for no cap" onChange={(value) => update("maxLot", value)} />
+          <Field label="Stop distance" value={form.stopDistance} placeholder="Price units, not a default pip" onChange={(value) => update("stopDistance", value)} />
+          <Field label="Risk amount" value={form.riskAmount} placeholder="Account currency" onChange={(value) => update("riskAmount", value)} />
         </form>
         <div className="mt-4 rounded-xl bg-background px-3 py-3 text-sm leading-6" aria-live="polite">
           {!formStarted ? (
-            <p>填写合约规格和风险金额后，这里给出向下取整的手数。空白不是 0。</p>
+            <p>Enter the contract terms and a risk amount. The floored lot size appears here. A blank is not zero.</p>
           ) : result.ok ? (
             <>
               <p>
-                建议手数 <span className="num font-medium">{formatLots(result.lots)}</span>
-                {result.belowMin ? "。低于最小手数，所以不建议为了凑手数而放大风险。" : null}
-                {result.capped ? "。已按最大手数封顶。" : null}
+                Suggested lots <span className="num font-medium">{formatLots(result.lots)}</span>
+                {result.belowMin ? ". That is below the minimum lot, so the size stays at zero instead of stretching the risk." : null}
+                {result.capped ? ". Capped at the maximum lot." : null}
               </p>
               <p>
-                触及止损时的预计亏损{" "}
+                Estimated loss if the stop is hit{" "}
                 <span className="num font-medium">{formatSignedMoney(-result.estimatedLoss, result.accountCurrency)}</span>
-                。未使用的风险额度 <span className="num">{formatLots(result.unusedRisk)}</span> {result.accountCurrency}。
+                . Unused risk <span className="num">{formatLots(result.unusedRisk)}</span> {result.accountCurrency}.
               </p>
               <p className="text-muted">
-                原始手数 {formatLots(result.rawLots)}，每手止损约 {formatLots(result.lossPerLot)} {result.accountCurrency}。这只是算术，不会连接终端，也不会下单。
+                Raw lots {formatLots(result.rawLots)}. About {formatLots(result.lossPerLot)} {result.accountCurrency} per lot at the stop. Arithmetic only. No terminal connection and no order.
               </p>
             </>
           ) : (
@@ -199,10 +199,10 @@ export function ToolsApp() {
 
       <section id="journal" className="panel px-4 py-5 sm:px-5" aria-labelledby="journal-heading">
         <h2 id="journal-heading" className="text-xl font-semibold">
-          本地日记 <span className="text-base font-normal text-muted">Local journal</span>
+          Local journal
         </h2>
         <p className="mt-2 rounded-xl bg-warning-bg px-3 py-3 text-sm leading-6 text-warning">
-          导入的文件只保存在这台浏览器。它不会因为导入就公开，也不会送到服务器。请不要把账号、密码或服务器名放进文件。换浏览器或清除站点数据后，日记会消失。
+          An imported file stays in this browser. Importing does not publish it and does not send it to a server. Do not put an account number, password, or server name in the file. Clearing site data, or switching browsers, removes the journal.
         </p>
         <label className="mt-4 flex items-start gap-2 text-sm leading-6">
           <input
@@ -211,11 +211,11 @@ export function ToolsApp() {
             checked={acknowledged}
             onChange={(event) => setAcknowledged(event.target.checked)}
           />
-          <span>我知道这次导入只留在本地，不会发布到网站。</span>
+          <span>I understand this import stays local and will not be published.</span>
         </label>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
           <label className="text-sm">
-            <span className="sr-only">选择 CSV 或 JSON</span>
+            <span className="sr-only">Choose a CSV or JSON file</span>
             <input
               type="file"
               accept=".csv,.json,text/csv,application/json"
@@ -228,12 +228,11 @@ export function ToolsApp() {
             />
           </label>
           <button type="button" className="rounded-full border border-card-border px-4 py-2 text-sm" onClick={() => void loadSample()}>
-            把虚构示例载入本地日记
+            Load the fictional sample into the local journal
           </button>
         </div>
         <p className="mt-3 text-xs leading-5 text-muted">
-          CSV 表头：recordType,symbol,side,volume,openTime,closeTime,openPrice,closePrice,profit,commission,swap,time,amount,cashflowType。交易行用
-          trade，出入金行用 cashflow，金额写正数，方向写 deposit 或 withdrawal。JSON 使用 closedTrades 和 cashflows。账户货币在计算表单里填写；留空时按 USD 读取 CSV。
+          CSV header: recordType,symbol,side,volume,openTime,closeTime,openPrice,closePrice,profit,commission,swap,time,amount,cashflowType. Use trade for a trade row and cashflow for cash, with a positive amount and type deposit or withdrawal. JSON uses closedTrades and cashflows. Account currency comes from the form above; a blank CSV import uses USD.
         </p>
         {errors.length ? (
           <ul className="mt-3 list-disc pl-5 text-sm text-negative" role="alert">
@@ -243,28 +242,28 @@ export function ToolsApp() {
           </ul>
         ) : null}
         {importNote ? <p className="mt-3 text-sm">{importNote}</p> : null}
-        {!journalReady ? <p className="mt-4 text-sm text-muted">正在读取这台浏览器里的日记…</p> : null}
-        {journalReady && !journal ? <p className="mt-4 text-sm leading-6 text-muted">还没有本地日记。公开概览不会显示这里的内容。</p> : null}
+        {!journalReady ? <p className="mt-4 text-sm text-muted">Reading the journal stored in this browser…</p> : null}
+        {journalReady && !journal ? <p className="mt-4 text-sm leading-6 text-muted">No local journal yet. The public overview does not show what you import here.</p> : null}
         {journal && view ? (
           <div className="mt-5 space-y-4">
-            <p className="text-sm font-medium">未发布 · 只在这台浏览器</p>
+            <p className="text-sm font-medium">Unpublished · this browser only</p>
             <MetricGrid model={view} />
             <BreakdownPanel view={view} />
             <TradeTable
               trades={view.trades}
               currency={view.currency}
               timeZone={view.timezone}
-              empty="本地日记里没有已平仓记录。"
+              empty="The local journal has no closed trades."
             />
             <div className="flex flex-wrap gap-2">
               <button type="button" className="btn btn-primary" onClick={exportCsv}>
-                导出 CSV
+                Export CSV
               </button>
               <Link href="/pricing/" className="btn btn-ghost">
-                这些分析现在免费
+                This analysis is free now
               </Link>
               <button type="button" className="btn btn-ghost" onClick={clearJournal}>
-                清除本地日记
+                Clear local journal
               </button>
             </div>
           </div>
@@ -273,17 +272,17 @@ export function ToolsApp() {
 
       <section className="panel border-dashed px-4 py-5 sm:px-5" aria-labelledby="planned-heading">
         <h2 id="planned-heading" className="text-xl font-semibold">
-          进阶分析 · 计划中
+          Further analysis · planned
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          上面的仓位计算、品种和月份汇总、费用拖累和 CSV 导出已经免费可用，没有被锁住。还没做的是多段对照和更长的风险报告。示意价格是 ${PLANNED_MONTHLY_USD}/月，只说明以后可能怎么收费，现在不能购买，也没有付款成功或登录。
+          Position sizing, the symbol and month summaries, fee drag, and CSV export are free and unlocked. What is not built is multi-period comparison and a longer risk report. ${PLANNED_MONTHLY_USD}/month is an illustration of a possible later price. Nothing can be purchased, and there is no payment-success state or login.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link href="/pricing/" className="btn btn-ghost">
-            看价格对照
+            Compare free and planned
           </Link>
           <button type="button" className="btn btn-ghost cursor-not-allowed opacity-60" disabled>
-            订阅尚未开放
+            Subscriptions are not yet open
           </button>
         </div>
       </section>

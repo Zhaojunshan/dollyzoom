@@ -7,11 +7,11 @@
   "account": {
     "class": "demo",
     "verified": false,
-    "label": "虚构示例"
+    "label": "Fictional sample"
   },
   "freshness": {
     "kind": "static-snapshot",
-    "note": "虚构示例，只用于展示界面。不是真实账户，也不是延迟行情。"
+    "note": "Fictional sample for the interface only. Not a real account and not a delayed feed."
   },
   "startingBalance": 10000,
   "startingBalanceTime": "2026-10-01T00:00:00Z",
@@ -29,7 +29,7 @@
     { "time": "2026-11-05T02:00:00Z", "equity": 11400, "balance": 11521 },
     { "time": "2026-11-20T08:00:00Z", "equity": 11620, "balance": 11553 }
   ],
-  "equitySnapshotsNote": "这些权益快照是虚构的，只为演示权益和余额可以不同。真实导出不会用成交去编造这条曲线。",
+  "equitySnapshotsNote": "These equity snapshots are fictional and only show that equity and balance can differ. A real export does not invent this curve from deals.",
   "cashflows": [
     { "id": "cashflow-1", "time": "2026-10-15T00:00:00Z", "type": "deposit", "amount": 2000 },
     { "id": "cashflow-2", "time": "2026-11-01T00:00:00Z", "type": "withdrawal", "amount": 500 }

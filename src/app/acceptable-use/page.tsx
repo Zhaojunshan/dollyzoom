@@ -4,33 +4,33 @@ import Link from "next/link";
 import { LegalDocument } from "@/components/LegalDocument";
 
 export const metadata: Metadata = {
-  title: "可接受使用",
-  description: "交易观察的使用边界：不得伪称已验证收益，不得提交账户凭证，不得把本站当成经纪商或跟单服务。",
+  title: "Acceptable use",
+  description: "Do not present Trade Journal as a verified profit record, a broker, or a copy-trading service, and do not publish account credentials.",
   alternates: { canonical: "/acceptable-use/" },
 };
 
 export default function AcceptableUsePage() {
   return (
-    <LegalDocument title="可接受使用" updated="2026-11-24">
+    <LegalDocument title="Acceptable use" updated="November 24, 2026">
       <p>
-        这些规则是 <Link href="/terms/">使用条款</Link> 的一部分。
+        These rules are part of the <Link href="/terms/">terms</Link>.
       </p>
-      <h2>请这样使用</h2>
+      <h2>Use it this way</h2>
       <ul>
-        <li>把公开页当作自行申报、未核验的已平仓记录。</li>
-        <li>只发布你有权公开、并且已经去掉账号和未平仓明细的文件。</li>
-        <li>把仓位计算器当成算术工具，合约规格以你自己的经纪商说明为准。</li>
+        <li>Treat the public page as a self-reported, unchecked closed-trade record.</li>
+        <li>Publish only records you have the right to publish, with account identifiers and open positions removed.</li>
+        <li>Treat the position calculator as arithmetic. The contract terms are the ones in your broker’s specification.</li>
       </ul>
-      <h2>请不要这样做</h2>
+      <h2>Do not use it this way</h2>
       <ul>
-        <li>把示例数据、未连接状态或未验证记录说成真实、已审核或保证获利的战绩。</li>
-        <li>在公开文件或日记里放入密码、登录号、服务器、会话或他人未授权的记录。</li>
-        <li>把本站描述成经纪商、信号服务、跟单系统或自动交易程序。</li>
-        <li>利用页面上的示意价格伪造已经付款或已经开通。</li>
+        <li>Do not describe the sample, an unconnected board, or an unverified record as real, audited, or a guaranteed profit.</li>
+        <li>Do not put a password, login, server, session, or someone else’s unauthorized record in a public file or in the journal.</li>
+        <li>Do not describe the site as a broker, a signal service, a copy-trading system, or an automated trading program.</li>
+        <li>Do not use the illustrated price to pretend a payment succeeded or a subscription is active.</li>
       </ul>
-      <h2>年龄</h2>
-      <p>本站讨论交易记录，不面向 18 岁以下的人。</p>
-      <p>本站没有接收凭证或留言的表单。如果一份准备公开的文件里出现了凭证，不要上传它，并在你自己的经纪商处更换相关密码。</p>
+      <h2>Age</h2>
+      <p>The site discusses trading records and is not meant for anyone under 18.</p>
+      <p>There is no form that accepts credentials or messages. If a file you meant to publish contains a credential, do not upload it, and change that credential with your broker.</p>
     </LegalDocument>
   );
 }

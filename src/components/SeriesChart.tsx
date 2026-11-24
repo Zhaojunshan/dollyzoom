@@ -102,20 +102,20 @@ export function SeriesChart({
         ))}
       </ul>
       <details className="mt-3 px-1 text-sm">
-        <summary className="cursor-pointer text-muted">查看图表数据表</summary>
+        <summary className="cursor-pointer text-muted">Chart data table</summary>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-left">
-            <caption className="sr-only">{title}的数据</caption>
+            <caption className="sr-only">Data for {title}</caption>
             <thead>
               <tr className="text-muted">
                 <th scope="col" className="py-1 pr-3 font-medium">
-                  序列
+                  Series
                 </th>
                 <th scope="col" className="py-1 pr-3 font-medium">
-                  时间
+                  Time
                 </th>
                 <th scope="col" className="py-1 font-medium">
-                  数值{currency ? `（${currency}）` : ""}
+                  Value{currency ? ` (${currency})` : ""}
                 </th>
               </tr>
             </thead>

@@ -4,39 +4,38 @@ import Link from "next/link";
 import { GuideArticle } from "@/components/GuideArticle";
 
 export const metadata: Metadata = {
-  title: "回撤和收益",
-  description: "已实现盈亏回撤、权益回撤和修正迪茨收益率的区别。没有权益快照时，权益回撤保持未知。",
-  keywords: ["权益回撤", "已实现回撤", "修正迪茨", "出入金"],
+  title: "Drawdown and return",
+  description:
+    "How realized P&L drawdown, equity drawdown, and Modified Dietz differ. Equity drawdown stays unknown without equity snapshots.",
+  keywords: ["equity drawdown", "realized drawdown", "Modified Dietz", "deposits and withdrawals"],
   alternates: { canonical: "/guide/drawdown/" },
 };
 
 export default function DrawdownGuidePage() {
   return (
-    <GuideArticle kicker="DRAWDOWN" title="回撤和收益率回答的是不同问题">
+    <GuideArticle kicker="DRAWDOWN" title="Drawdown and return answer different questions">
       <p>
-        概览上可能同时出现三个数。它们都依赖文件里真实给出的字段。缺了哪一项，对应的数就是未知，而不是 0。打开
-        <Link href="/#records"> 平仓记录 </Link>
-        里的示例时，这三个数会故意不一样，用来看标签；那些数字是虚构的。
+        The overview can show three different numbers. Each one depends on fields the file actually contains. A missing input stays unknown, not zero. If you open the sample on the{" "}
+        <Link href="/#records">closed-trade board</Link>, those three numbers are intentionally different so the labels can be checked. The sample figures are fictional.
       </p>
-      <h2>已实现盈亏回撤</h2>
+      <h2>Realized P&amp;L drawdown</h2>
       <p>
-        把已平仓净盈亏按时间累加，再看这条累计线从自己的高点回落多少。它不含出入金，也不含未平仓浮动。所以它不能叫做权益回撤。
+        Closed net P&amp;L is added in time order. The drawdown is how far that cumulative line falls from its own peak. Cash flows are excluded, and so is any floating open-position result. That is why it is not called equity drawdown.
       </p>
-      <h2>权益回撤</h2>
+      <h2>Equity drawdown</h2>
       <p>
-        权益包含未平仓的浮动结果。只有成交时，持仓期间的路径是未知的。本站只在你提供至少两个权益快照时计算，并写明快照之间的波动没有被记录。一个时点的权益可以显示，但构不成回撤。
+        Equity includes the floating result of open positions. Deals alone leave the path during a trade unknown. This site computes equity drawdown only when at least two equity snapshots are supplied, and it says the path between snapshots was not recorded. A single equity reading can be shown. It is not a drawdown.
       </p>
-      <h2>余额自高点回落</h2>
+      <h2>A balance drop from its high</h2>
       <p>
-        如果有期初余额，页面会画出已实现余额：期初余额加上出入金，再加上已平仓净盈亏。出金会让余额下降。这个从高点的落差含有出入金，因此单独标注，不用作回撤指标。
+        With a starting balance, the board draws realized balance: starting balance, plus cash flows, plus closed net P&amp;L. A withdrawal lowers that balance. The drop from the high includes cash flows, so it is labeled separately and is not used as the drawdown statistic.
       </p>
-      <h2>修正迪茨收益率</h2>
+      <h2>Modified Dietz</h2>
       <p>
-        收益率还要看资金在什么时候进来。已实现余额的修正迪茨把出入金按停留时间加权。它不是权益的时间加权收益。没有期初余额、时间区间无效，或分母不是正数时，收益率不可用。一个为正的收益率仍然可以伴随很深的回撤，所以这两个数不能互相代替。
+        A return also depends on when money arrived. Modified Dietz on realized balance weights each cash flow by how long it stayed. It is not an equity time-weighted return. It stays unavailable without a starting balance, when the period is not positive, or when the denominator is not positive. A positive return can still sit next to a deep drawdown, so the two numbers do not replace each other.
       </p>
       <p>
-        更细的月份和费用汇总在 <Link href="/tools/#journal">本地日记</Link>
-        ，前提是你已经导入记录。那仍然只是已平仓字段的整理。
+        Symbol, month, and fee summaries live in the <Link href="/tools/#journal">local journal</Link> after you import records. They still only rearrange closed-trade fields.
       </p>
     </GuideArticle>
   );

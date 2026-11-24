@@ -75,9 +75,9 @@ jobs:
           test -f out/terms/index.html
           test -f out/privacy/index.html
           test -f out/acceptable-use/index.html
-          grep -q '交易观察' out/index.html
-          grep -q '自行申报' out/index.html
-          grep -q '尚未开放' out/pricing/index.html
+          grep -q 'Trade Journal' out/index.html
+          grep -q 'self-reported' out/index.html
+          grep -q 'not yet open' out/pricing/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

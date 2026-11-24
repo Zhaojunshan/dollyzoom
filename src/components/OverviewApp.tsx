@@ -16,32 +16,32 @@ type Mode = "pending" | "public" | "demo";
 type Phase = "loading" | "error" | "sensitive" | "local-only" | "invalid" | "ready";
 
 const WARNING_TEXT: Record<string, string> = {
-  "still-open": "仍有未平完的仓位，未写入表格",
-  "unsupported-inout": "反向开仓 inout 不在支持格式里，已整笔排除",
-  "volume-mismatch": "平仓量对不上开仓量，该笔已排除",
-  "credit-ignored": "信用额调整已忽略，不计入盈亏",
-  "missing-position-id": "缺少持仓编号的成交已排除",
-  "ignored-deal-type": "不支持的成交类型已排除",
-  "mixed-entry-side": "同一笔持仓方向不一致，已排除",
-  "mixed-symbol": "同一笔持仓出现多个品种，已排除",
-  "bad-deal": "有字段无法读取的成交，已排除",
-  "bad-time": "时间无效或顺序颠倒，已排除",
-  "ignored-zero-balance": "金额为 0 的余额调整已忽略",
-  "verified-flag-ignored": "文件里的已验证标记已忽略",
+  "still-open": "A position was still open and was left off the table",
+  "unsupported-inout": "A reversing in/out deal is outside this format and was dropped",
+  "volume-mismatch": "Closed volume did not match opened volume, so the position was dropped",
+  "credit-ignored": "A credit adjustment was ignored and is not P&L",
+  "missing-position-id": "A deal without a position id was dropped",
+  "ignored-deal-type": "An unsupported deal type was dropped",
+  "mixed-entry-side": "One position mixed entry sides and was dropped",
+  "mixed-symbol": "One position mixed symbols and was dropped",
+  "bad-deal": "A deal had unreadable fields and was dropped",
+  "bad-time": "A time was invalid or out of order and was dropped",
+  "ignored-zero-balance": "A zero balance adjustment was ignored",
+  "verified-flag-ignored": "A verified flag in the file was ignored",
 };
 
 const ACCOUNT: Record<string, string> = {
-  unknown: "账户类型未知",
-  demo: "模拟账户 DEMO",
-  live: "实盘 LIVE，自报且未验证",
-  contest: "比赛账户 CONTEST，未验证",
+  unknown: "Account type unknown",
+  demo: "Demo account",
+  live: "Live, self-reported, not verified",
+  contest: "Contest, not verified",
 };
 
 const SOURCE: Record<string, string> = {
-  unconnected: "未连接",
-  demo: "示例数据 DEMO",
-  "manual-static-export": "手动发布的静态快照",
-  "local-journal": "本地日记",
+  unconnected: "Unconnected",
+  demo: "Sample data DEMO",
+  "manual-static-export": "Manually published snapshot",
+  "local-journal": "Local journal",
 };
 
 export function OverviewApp() {
@@ -108,36 +108,36 @@ export function OverviewApp() {
     <div className="mt-8 space-y-4">
       {mode === "demo" ? (
         <div className="rounded-xl border border-warning bg-warning-bg px-4 py-3 text-sm leading-6 text-warning" role="status">
-          <p className="font-semibold">示例数据 DEMO</p>
+          <p className="font-semibold">Sample data DEMO</p>
           <p>
-            这些数字是虚构的，只用来看界面。它们不是你的账户，也不是已验证战绩。这个标记会一直留着，直到你关闭示例。关闭后回到未连接或已发布文件，不会把示例写成真实结果。
+            These figures are fictional and only show the interface. They are not your account and not a verified record. This mark stays until you close the sample. Closing it returns to the unconnected or published file and does not rewrite the sample as a real result.
           </p>
         </div>
       ) : null}
 
       {phase === "loading" ? (
         <p className="loading-pulse rounded-2xl border border-card-border bg-card px-4 py-8 text-sm text-muted" role="status">
-          正在读取静态数据文件…
+          Reading the static data file…
         </p>
       ) : null}
       {phase === "error" ? (
         <p className="rounded-2xl border border-negative/30 bg-danger-bg px-4 py-4 text-sm leading-6" role="alert">
-          公开数据文件没有读到。页面不会自动改成示例数据，也不会用 0 填充。
+          The public data file could not be read. The page will not switch to the sample, and it will not fill the board with zeros.
         </p>
       ) : null}
       {phase === "sensitive" ? (
         <p className="rounded-2xl border border-negative/30 bg-danger-bg px-4 py-4 text-sm leading-6" role="alert">
-          这份文件含有不应公开的字段，例如持仓、登录或服务器。页面已拒绝展示。
+          This file contains fields that must not be public, such as positions, a login, or a server. The page refused to show it.
         </p>
       ) : null}
       {phase === "local-only" ? (
         <p className="rounded-2xl border border-warning/30 bg-warning-bg px-4 py-4 text-sm leading-6" role="alert">
-          这份导出仍标记为只保存在本机。公开页不会展示它。请先审阅，去掉 localOnly，再手动放进 public/data/performance.json。
+          This export is still marked local-only. The public page will not show it. Review it, remove localOnly, then copy it to public/data/performance.json yourself.
         </p>
       ) : null}
       {phase === "invalid" ? (
         <p className="rounded-2xl border border-negative/30 bg-danger-bg px-4 py-4 text-sm leading-6" role="alert">
-          数据文件的格式无法识别，或示例文件没有标明 source 为 demo。没有显示任何业绩数字。
+          The data file is not in a recognized shape, or the sample file is not marked source demo. No performance figures are shown.
         </p>
       ) : null}
 
@@ -146,11 +146,11 @@ export function OverviewApp() {
       <div className="flex flex-wrap gap-2">
         {mode === "demo" ? (
           <button type="button" className="btn btn-primary" onClick={() => setDemo(false)}>
-            关闭示例，回到已发布文件
+            Close sample and use the published file
           </button>
         ) : (
           <button type="button" className="btn btn-ghost" onClick={() => setDemo(true)}>
-            查看示例
+            View sample
           </button>
         )}
       </div>
@@ -161,43 +161,43 @@ export function OverviewApp() {
 function Dashboard({ model }: { model: NonNullable<ReturnType<typeof buildViewModel>> }) {
   const freshness =
     model.freshness.kind === "unconnected"
-      ? "没有 as-of。这不是延迟行情。"
+      ? "No as-of time. This is not a delayed quote."
       : model.freshness.kind === "stale"
-        ? `静态快照已过去 ${formatAge(model.freshness.ageMs)}，只是旧文件，不是延迟报价。`
+        ? `This static snapshot is ${formatAge(model.freshness.ageMs)} old. It is an old file, not a delayed quote.`
         : model.freshness.kind === "undated"
-          ? "快照没有 as-of，不能判断新旧。"
+          ? "The snapshot has no as-of time, so its age is unknown."
           : model.freshness.kind === "future"
-            ? "as-of 晚于这台设备的时钟。"
-            : `静态快照，距 as-of ${formatAge(model.freshness.ageMs)}。不是实时推送。`;
+            ? "The as-of time is later than this device's clock."
+            : `Static snapshot, ${formatAge(model.freshness.ageMs)} after as-of. Not a live push.`;
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-card-border bg-card px-4 py-4" aria-label="连接状态">
+      <section className="rounded-2xl border border-card-border bg-card px-4 py-4" aria-label="Connection status">
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <StatusItem label="数据状态" value={SOURCE[model.source] ?? model.source} />
-          <StatusItem label="账户" value={ACCOUNT[model.accountClass] ?? "账户类型未知"} />
-          <StatusItem label="as of" value={model.asOf ? formatTime(model.asOf, model.timezone) : "未知"} />
-          <StatusItem label="货币" value={model.currency ?? "未知"} />
-          <StatusItem label="时区" value={model.timezone ?? "未知"} />
+          <StatusItem label="Data" value={SOURCE[model.source] ?? model.source} />
+          <StatusItem label="Account" value={ACCOUNT[model.accountClass] ?? "Account type unknown"} />
+          <StatusItem label="As of" value={model.asOf ? formatTime(model.asOf, model.timezone) : "Unknown"} />
+          <StatusItem label="Currency" value={model.currency ?? "Unknown"} />
+          <StatusItem label="Time zone" value={model.timezone ?? "Unknown"} />
         </dl>
         <p className="mt-3 text-sm leading-6 text-muted">{freshness}</p>
         <p className="text-sm leading-6 text-muted">{model.freshnessNote}</p>
-        {model.label ? <p className="mt-1 text-sm">标签：{model.label}</p> : null}
+        {model.label ? <p className="mt-1 text-sm">Label: {model.label}</p> : null}
         {model.freshness.kind === "stale" ? (
           <p className="mt-3 rounded-xl bg-warning-bg px-3 py-2 text-sm text-warning" role="status">
-            这份快照超过 7 天。它不会被描述成延迟数据。
+            This snapshot is older than 7 days. It is not described as delayed data.
           </p>
         ) : null}
         {model.balanceMismatch != null ? (
           <p className="mt-3 text-sm leading-6">
-            推算余额和导出时点余额相差 {model.balanceMismatch}。两个数字都保留。可能是期初余额、缺失记录或时点读数不一致。
+            Reconstructed balance and the exported point balance differ by {model.balanceMismatch}. Both numbers stay visible. The starting balance, a missing record, or the point reading may not agree.
           </p>
         ) : null}
       </section>
 
       {model.status === "unconnected" ? (
         <p className="rounded-2xl border border-dashed border-card-border bg-card px-4 py-4 text-sm leading-6">
-          还没有公开发布的交易记录。账户类型、余额、权益、胜率和曲线都是未知，下面的格子用破折号表示，不用 0 冒充。
+          No trading record has been published. Account type, balance, equity, win rate, and the curves are unknown. The tiles use a dash, not a zero.
         </p>
       ) : null}
 
@@ -206,51 +206,51 @@ function Dashboard({ model }: { model: NonNullable<ReturnType<typeof buildViewMo
       <div className="grid gap-4 xl:grid-cols-5">
         <div className="xl:col-span-3">
           <SeriesChart
-            title="余额与权益"
-            description="绿线是已实现余额，前提是文件提供了期初余额。褐色线只有在文件带有权益快照时才出现。没有快照就不会画权益，也不会把余额回撤叫做权益回撤。"
+            title="Balance and equity"
+            description="The blue line is realized balance, and only if the file includes a starting balance. The gold line appears only when equity snapshots are supplied. Without snapshots there is no equity line, and a balance drop is not called equity drawdown."
             currency={model.currency}
             timeZone={model.timezone}
             empty={
               model.status === "unconnected"
-                ? "未连接，所以不画曲线。"
-                : "现在画不出余额或权益曲线。余额需要期初余额；权益需要至少两个快照。未知不会被画成 0。"
+                ? "Unconnected, so no curve is drawn."
+                : "A balance or equity curve cannot be drawn. Balance needs a starting balance. Equity needs at least two snapshots. Unknown is not drawn as zero."
             }
             series={[
               model.balanceSeries.available
-                ? { id: "balance", label: "已实现余额", color: "#9ec1ff", points: model.balanceSeries.points }
-                : { id: "balance", label: "已实现余额", color: "#9ec1ff", points: [] },
+                ? { id: "balance", label: "Realized balance", color: "#9ec1ff", points: model.balanceSeries.points }
+                : { id: "balance", label: "Realized balance", color: "#9ec1ff", points: [] },
               model.equitySeries.points.length
-                ? { id: "equity", label: "权益快照", color: "#e6b84d", points: model.equitySeries.points }
-                : { id: "equity", label: "权益快照", color: "#e6b84d", points: [] },
+                ? { id: "equity", label: "Equity snapshots", color: "#e6b84d", points: model.equitySeries.points }
+                : { id: "equity", label: "Equity snapshots", color: "#e6b84d", points: [] },
             ]}
           />
         </div>
         <aside className="rounded-2xl border border-card-border bg-card px-4 py-4 text-sm leading-6 xl:col-span-2">
-          <h3 className="font-semibold">这两条线为什么可能不同</h3>
+          <h3 className="font-semibold">Why the two lines can differ</h3>
           <p className="mt-2 text-muted">
-            已实现余额只在平仓、入金和出金时变化。权益还会包含未平仓的浮动结果。只有成交记录时，浮动路径是未知的。
+            Realized balance moves only when a trade closes or cash moves in or out. Equity also includes the floating result of open positions. Deals alone leave that path unknown.
           </p>
           {model.equitySnapshotsNote ? <p className="mt-2">{model.equitySnapshotsNote}</p> : null}
           {model.balanceSeries.available ? (
             <p className="mt-2 text-muted">
-              余额自高点的回落是 {formatSignedMoney(model.balanceSeries.maxDrop, model.currency)}（含出入金）。出金会让余额下降，所以这个数不是回撤指标。
+              The balance drop from its high is {formatSignedMoney(model.balanceSeries.maxDrop, model.currency)}, including cash flows. A withdrawal lowers balance, so this number is not a drawdown statistic.
             </p>
           ) : (
-            <p className="mt-2 text-muted">已实现余额曲线：{model.balanceSeries.reason === "unconnected" ? "未连接" : "缺少期初余额或时间"}。</p>
+            <p className="mt-2 text-muted">Realized balance curve: {model.balanceSeries.reason === "unconnected" ? "unconnected" : "starting balance or time is missing"}.</p>
           )}
         </aside>
       </div>
 
       <SeriesChart
-        title="已实现盈亏累计"
-        description="只累加已平仓净盈亏。它从 0 开始，不包含出入金，也不是权益曲线。"
+        title="Cumulative realized P&L"
+        description="Closed net P&L added up over time. It starts at zero, excludes cash flows, and is not an equity curve."
         currency={model.currency}
         timeZone={model.timezone}
-        empty="没有已平仓记录，或记录尚未发布，所以没有这条累计线。"
+        empty="There are no closed trades, or none have been published, so this cumulative line is absent."
         series={[
           {
             id: "pnl",
-            label: "累计净盈亏",
+            label: "Cumulative net P&L",
             color: "#6ee7b7",
             points: model.realizedPnlDrawdown.points,
           },
@@ -271,7 +271,7 @@ function Dashboard({ model }: { model: NonNullable<ReturnType<typeof buildViewMo
         trades={model.trades}
         currency={model.currency}
         timeZone={model.timezone}
-        empty={model.status === "unconnected" ? "没有已平仓记录。文件仍是未连接，不是一份空的真实历史。" : "这份快照里没有已平仓记录。胜率因此未知。"}
+        empty={model.status === "unconnected" ? "No closed trades. The file is still unconnected, not an empty real history." : "This snapshot has no closed trades. Win rate is therefore unknown."}
       />
       <BreakdownPanel view={model} />
     </div>

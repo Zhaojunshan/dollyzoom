@@ -275,14 +275,14 @@ def build_export(
         },
         "freshness": {
             "kind": "static-snapshot",
-            "note": "手动生成本地文件。不是实时推送，也没有强制延迟。公开前需要人工检查并去掉 localOnly。",
+            "note": "Local file from a manual export. Not a live feed and not a forced delay. Review it and remove localOnly before publishing.",
         },
         "startingBalance": starting_balance,
         "startingBalanceTime": starting_balance_time,
         "overview": point
         or {"balance": None, "equity": None, "balanceAsOf": None, "equityAsOf": None},
         "equitySnapshots": [],
-        "equitySnapshotsNote": "成交历史不能还原权益曲线。本导出不填写 equitySnapshots。",
+        "equitySnapshotsNote": "Deal history cannot reconstruct an equity curve. This export leaves equitySnapshots empty.",
         "cashflows": aggregated["cashflows"],
         "closedTrades": aggregated["closedTrades"],
         "warnings": aggregated["warnings"],

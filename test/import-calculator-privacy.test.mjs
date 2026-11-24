@@ -23,8 +23,8 @@ test("invalid journal rows are rejected and sensitive payloads are not echoed", 
     context,
   );
   assert.equal(bad.ok, false);
-  assert.ok(bad.errors.some((error) => error.includes("手数")));
-  assert.ok(bad.errors.some((error) => error.includes("平仓时间")));
+  assert.ok(bad.errors.some((error) => error.includes("volume must be greater than 0")));
+  assert.ok(bad.errors.some((error) => error.includes("close time is earlier")));
 
   const hidden = {
     currency: "USD",

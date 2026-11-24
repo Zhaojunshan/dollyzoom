@@ -5,53 +5,53 @@ import { Disclosure } from "@/components/Disclosure";
 import { PLANNED_MONTHLY_USD } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "价格",
+  title: "Pricing",
   description:
-    "已平仓概览、仓位计算和本地日记分析现在免费。计划中的持续分析示意 $9/月，订阅尚未开放，本站不能付款。",
-  keywords: ["交易日记价格", "免费仓位计算", "计划中的分析订阅"],
+    "The closed-trade overview, position calculator, and local journal are free. A planned analytics subscription is illustrated at $9/month and is not open. This site cannot take payment.",
+  keywords: ["trade journal pricing", "free position calculator", "planned analytics subscription"],
   alternates: { canonical: "/pricing/" },
 };
 
 const rows = [
-  ["已平仓概览、筛选和曲线", "免费，数据未发布时保持未知", "仍免费"],
-  ["仓位计算（自填 tick）", "免费，现在可用", "仍免费"],
-  ["本地日记、品种/月份、费用拖累、CSV", "免费，只留在浏览器", "仍免费"],
-  ["多段账户对照", "没有", "计划中，现在不可用"],
-  ["更长的风险报告和固定导出模板", "没有", "计划中，现在不可用"],
-  ["交易信号、跟单、自动下单", "不做", "不做"],
-  ["结账和登录", "没有", "尚未开放，没有付款按钮"],
+  ["Closed-trade overview, filters, and curves", "Free. Unknown until a file is published.", "Stays free"],
+  ["Position calculator with your own ticks", "Free and working now", "Stays free"],
+  ["Local journal, symbol and month splits, fee drag, CSV", "Free. Stays in the browser.", "Stays free"],
+  ["Comparison across several periods", "Not built", "Planned. Not available now."],
+  ["A longer risk report and fixed export templates", "Not built", "Planned. Not available now."],
+  ["Trade signals, copy trading, or order entry", "Not offered", "Not offered"],
+  ["Checkout and login", "None", "Not yet open. No pay button."],
 ];
 
 export default function PricingPage() {
   return (
     <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
       <p className="text-xs font-medium tracking-[0.16em] text-accent">FREE NOW · PRO NOT OPEN</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">先免费使用，订阅以后再说</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Use it free. Subscribe only later, if at all.</h1>
       <p className="mt-3 max-w-3xl text-base leading-7 text-muted">
-        能核对平仓、费用和仓位的部分现在就能用，没有被做成试用墙。计划中的订阅如果开放，卖的是还没做出来的持续分析，不是收益承诺。示意价格 ${PLANNED_MONTHLY_USD}/月，不是报价，也不能在这里付款。
+        What can check closed trades, fees, and position size works now and is not behind a trial wall. If a subscription opens later, it would sell analysis that has not been built. It would not sell a profit promise. ${PLANNED_MONTHLY_USD}/month is an illustration, not a quote, and it cannot be paid here.
       </p>
       <div className="mt-6 flex flex-wrap gap-2">
         <Link href="/#records" className="btn btn-primary">
-          查看平仓记录
+          View closed trades
         </Link>
         <Link href="/tools/#size" className="btn btn-ghost">
-          免费使用仓位计算
+          Use the free position calculator
         </Link>
       </div>
 
       <div className="mt-8 overflow-x-auto rounded-xl border border-card-border">
         <table className="w-full min-w-[640px] text-left text-sm">
-          <caption className="sr-only">免费功能与计划中功能</caption>
+          <caption className="sr-only">Free features compared with planned features</caption>
           <thead className="bg-card text-muted">
             <tr>
               <th scope="col" className="px-3 py-3 font-medium">
-                能力
+                Capability
               </th>
               <th scope="col" className="px-3 py-3 font-medium">
-                现在
+                Now
               </th>
               <th scope="col" className="px-3 py-3 font-medium">
-                计划中 · ${PLANNED_MONTHLY_USD}/月示意
+                Planned · ${PLANNED_MONTHLY_USD}/month illustration
               </th>
             </tr>
           </thead>
@@ -70,12 +70,12 @@ export default function PricingPage() {
       </div>
 
       <section className="panel mt-6 px-4 py-5">
-        <h2 className="text-lg font-semibold">为什么以后可能收费</h2>
+        <h2 className="text-lg font-semibold">Why a later price might exist</h2>
         <p className="mt-2 text-sm leading-7 text-muted">
-          免费工具解决单次计算和一份本地日记。如果以后做持续的对照和更长的报告，维护这些分析才是收费的理由。在那之前，价格页只负责把“已经能用”和“还没做”分开。没有倒计时，没有已订阅人数，也没有付款成功状态。
+          The free tools cover one calculation and one local journal. Ongoing comparison and a longer report, if they are built, are the only reason a fee would be discussed. Until then this page only separates what works from what does not. There is no countdown, no subscriber count, and no payment-success state.
         </p>
         <button type="button" className="btn btn-ghost mt-4 cursor-not-allowed opacity-60" disabled>
-          订阅尚未开放
+          Subscriptions are not yet open
         </button>
       </section>
       <div className="mt-8">

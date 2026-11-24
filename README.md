@@ -1,6 +1,8 @@
-# 交易观察 Trade Journal
+# Trade Journal
 
-`https://dollyzoom.top/` 上的公开页面是一份已平仓交易记录和本地工具，不是经纪商，也不提供交易信号、跟单或自动下单。
+The public website is in English. `https://dollyzoom.top/` shows closed-trade records and local tools. It is not a broker and does not offer signals, copy trading, or automatic orders.
+
+公开页面是英文。下面的操作说明仍用中文。
 
 生产环境默认读取 `public/data/performance.json`。这份文件的 `source` 是 `unconnected`：账户类型、余额、权益、胜率和曲线都是未知，不会用 0 或虚构曲线冒充。示例数据在 `public/data/demo-performance.json`，只有访客主动打开后才显示，并一直标着 **示例数据 DEMO**。
 

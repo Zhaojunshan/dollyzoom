@@ -2,24 +2,24 @@ import type { Metadata } from "next";
 
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
-import { SITE_NAME, SITE_NAME_EN, SITE_URL } from "@/lib/site";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: `${SITE_NAME} ${SITE_NAME_EN}`,
+    default: `${SITE_NAME} — closed-trade record`,
     template: `%s | ${SITE_NAME}`,
   },
   description:
-    "公开的已平仓交易记录和浏览器本地工具。未连接时不显示虚构业绩。不提供交易信号、跟单或自动下单。",
+    "A public closed-trade journal and free browser tools. Unconnected until you publish a file. No signals, copy trading, or profit promises.",
   applicationName: SITE_NAME,
   alternates: { canonical: "/" },
   openGraph: {
-    title: `${SITE_NAME} ${SITE_NAME_EN}`,
-    description: "已平仓记录、本地仓位计算和日记。数据未核验，不承诺收益。",
+    title: SITE_NAME,
+    description: "Closed-trade records, position sizing, and a local journal. Unverified. No profit promise.",
     type: "website",
-    locale: "zh_CN",
+    locale: "en_US",
     url: SITE_URL,
     siteName: SITE_NAME,
   },
@@ -28,10 +28,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="zh-CN" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased">
       <body className="flex min-h-full flex-col text-foreground">
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2">
-          跳到内容
+          Skip to content
         </a>
         <Header />
         <div className="flex flex-1 flex-col">{children}</div>

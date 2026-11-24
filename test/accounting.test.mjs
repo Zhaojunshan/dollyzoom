@@ -168,8 +168,8 @@ test("equity drawdown is not invented from closed deals", () => {
   assert.equal(view.realizedPnlDrawdown.maxDrawdown, -40);
   assert.equal(view.equitySeries.drawdown, -200);
   assert.notEqual(view.equitySeries.drawdown, view.realizedPnlDrawdown.maxDrawdown);
-  assert.match(view.equitySeries.label, /权益/);
-  assert.match(view.realizedPnlDrawdown.label, /不是权益回撤/);
+  assert.match(view.equitySeries.label, /Equity/);
+  assert.match(view.realizedPnlDrawdown.label, /not equity drawdown/);
 
   const noShots = parseFeed(
     connectedFeed({
