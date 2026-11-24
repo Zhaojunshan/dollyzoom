@@ -22,6 +22,14 @@ def main() -> None:
         updated = text.replace('"/favicon.ico', f'"{prefix}favicon.ico')
         if depth:
             updated = updated.replace('"./_next/', f'"{prefix}_next/')
+            # The turbopack runtime prefixes chunk ids with "./_next/", then
+            # looks for a script tag with that exact src. Nested pages load
+            # those files from "../_next/", so the prefix has to match or the
+            # client never hydrates.
+            base = f"{prefix}_next/"
+            inject = f'<script>globalThis.TURBOPACK_CHUNK_BASE_PATH="{base}"</script>'
+            if "TURBOPACK_CHUNK_BASE_PATH" not in updated:
+                updated = updated.replace("<head>", "<head>" + inject, 1)
         if updated != text:
             path.write_text(updated)
             print(f"relativized {path.relative_to(ROOT)} (depth {depth})")

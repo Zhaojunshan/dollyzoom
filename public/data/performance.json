@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "1",
+  "source": "unconnected",
+  "asOf": null,
+  "timezone": null,
+  "currency": null,
+  "account": {
+    "class": "unknown",
+    "verified": false,
+    "label": null
+  },
+  "freshness": {
+    "kind": "unconnected",
+    "note": "尚未发布任何交易记录。这不是延迟行情，也没有连接终端。"
+  },
+  "startingBalance": null,
+  "startingBalanceTime": null,
+  "overview": {
+    "balance": null,
+    "equity": null,
+    "balanceAsOf": null,
+    "equityAsOf": null
+  },
+  "equitySnapshots": [],
+  "equitySnapshotsNote": null,
+  "cashflows": [],
+  "closedTrades": [],
+  "warnings": [],
+  "limits": ["closed-positions-only", "no-equity-history"]
+}

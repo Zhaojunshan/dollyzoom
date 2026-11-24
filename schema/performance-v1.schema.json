@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dollyzoom.top/schema/performance-v1.schema.json",
+  "title": "Trade Journal public performance snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "source",
+    "asOf",
+    "timezone",
+    "currency",
+    "account",
+    "freshness",
+    "startingBalance",
+    "startingBalanceTime",
+    "overview",
+    "equitySnapshots",
+    "cashflows",
+    "closedTrades"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "source": { "enum": ["unconnected", "manual-static-export", "demo"] },
+    "localOnly": { "const": false },
+    "asOf": { "type": ["string", "null"], "format": "date-time" },
+    "timezone": { "type": ["string", "null"] },
+    "currency": { "type": ["string", "null"], "pattern": "^[A-Z]{3}$" },
+    "account": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "verified", "label"],
+      "properties": {
+        "class": { "enum": ["unknown", "demo", "live", "contest"] },
+        "verified": { "const": false },
+        "label": { "type": ["string", "null"], "maxLength": 40 }
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "note"],
+      "properties": {
+        "kind": { "enum": ["unconnected", "static-snapshot"] },
+        "note": { "type": "string", "maxLength": 400 }
+      }
+    },
+    "startingBalance": { "type": ["number", "null"] },
+    "startingBalanceTime": { "type": ["string", "null"], "format": "date-time" },
+    "overview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["balance", "equity", "balanceAsOf", "equityAsOf"],
+      "properties": {
+        "balance": { "type": ["number", "null"] },
+        "equity": { "type": ["number", "null"] },
+        "balanceAsOf": { "type": ["string", "null"], "format": "date-time" },
+        "equityAsOf": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "equitySnapshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["time", "equity"],
+        "properties": {
+          "time": { "type": "string", "format": "date-time" },
+          "equity": { "type": "number" },
+          "balance": { "type": ["number", "null"] }
+        }
+      }
+    },
+    "equitySnapshotsNote": { "type": ["string", "null"] },
+    "cashflows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/cashflow" }
+    },
+    "closedTrades": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/closedTrade" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "count"],
+        "properties": {
+          "code": {
+            "enum": [
+              "still-open",
+              "unsupported-inout",
+              "volume-mismatch",
+              "credit-ignored",
+              "missing-position-id",
+              "ignored-deal-type",
+              "mixed-entry-side",
+              "mixed-symbol",
+              "bad-deal",
+              "bad-time",
+              "ignored-zero-balance",
+              "verified-flag-ignored"
+            ]
+          },
+          "count": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "limits": { "type": "array", "items": { "type": "string", "maxLength": 80 } }
+  },
+  "$defs": {
+    "cashflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "time", "type", "amount"],
+      "properties": {
+        "id": { "type": "string", "maxLength": 40 },
+        "time": { "type": "string", "format": "date-time" },
+        "type": { "enum": ["deposit", "withdrawal"] },
+        "amount": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "closedTrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One fully closed position. Partial outs are already aggregated. Raw MT5 deals and open positions are not part of this record.",
+      "required": [
+        "id",
+        "symbol",
+        "side",
+        "volume",
+        "openTime",
+        "closeTime",
+        "openPrice",
+        "closePrice",
+        "profit",
+        "commission",
+        "swap",
+        "partialCloses",
+        "note"
+      ],
+      "properties": {
+        "id": { "type": "string", "maxLength": 40 },
+        "symbol": { "type": "string", "pattern": "^[A-Z0-9._]{1,24}$" },
+        "side": { "enum": ["buy", "sell"] },
+        "volume": { "type": "number", "exclusiveMinimum": 0 },
+        "openTime": { "type": "string", "format": "date-time" },
+        "closeTime": { "type": "string", "format": "date-time" },
+        "openPrice": { "type": "number" },
+        "closePrice": { "type": "number" },
+        "profit": { "type": "number", "description": "Sum of deal price results in account currency. Costs are not included here." },
+        "commission": { "type": "number", "description": "Signed. MT5 costs are usually negative." },
+        "swap": { "type": "number", "description": "Signed. MT5 costs are usually negative." },
+        "partialCloses": { "type": "integer", "minimum": 1 },
+        "note": { "enum": ["aggregated-partial-closes", null] }
+      }
+    }
+  }
+}

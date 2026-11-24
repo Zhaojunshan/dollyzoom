@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test server/app.test.mjs server/credits.test.mjs server/dashscope.test.mjs",
+    "test": "node --test test/*.test.mjs server/app.test.mjs server/credits.test.mjs server/dashscope.test.mjs && python3 -m unittest discover -s scripts -p 'test_*.py'",
     "preview": "npx --yes serve out",
     "moderation-proxy": "node server/index.mjs"
   },

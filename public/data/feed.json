@@ -1,0 +1,5 @@
+{
+  "performancePath": "/data/performance.json",
+  "demoPath": "/data/demo-performance.json",
+  "note": "把人工检查过的静态 JSON 放到 performancePath。这里没有上传接口，也没有密钥。"
+}
