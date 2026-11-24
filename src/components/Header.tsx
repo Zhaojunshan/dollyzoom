@@ -1,31 +1,31 @@
 import Link from "next/link";
 
+import { SITE_NAME, SITE_NAME_EN } from "@/lib/site";
+
+const links = [
+  { href: "/", label: "概览" },
+  { href: "/tools/", label: "工具" },
+  { href: "/pricing/", label: "价格" },
+];
+
 export function Header() {
   return (
-    <header className="sticky top-0 z-40 border-b border-card-border/80 bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-sm text-white">
-            DZ
-          </span>
-          <span>DollyZoom</span>
+    <header className="sticky top-0 z-40 border-b border-card-border bg-card/90 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+        <Link href="/" className="min-w-0 leading-tight">
+          <span className="block text-base font-semibold tracking-wide">{SITE_NAME}</span>
+          <span className="block text-[11px] text-muted">{SITE_NAME_EN}</span>
         </Link>
-        <nav className="flex items-center gap-4 text-sm text-muted">
-          <Link href="/#demo" className="hover:text-foreground transition-colors">
-            Demo
-          </Link>
-          <Link href="/#pricing" className="hover:text-foreground transition-colors">
-            Pricing
-          </Link>
-          <a href="#support" className="hidden hover:text-foreground transition-colors sm:inline">
-            Support
-          </a>
-          <Link
-            href="/#upload"
-            className="rounded-full bg-accent px-3.5 py-1.5 font-medium text-white hover:bg-accent-soft transition-colors"
-          >
-            Try free
-          </Link>
+        <nav aria-label="页面" className="flex items-center gap-1 text-sm sm:gap-2">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="rounded-full px-2.5 py-1.5 text-foreground hover:bg-accent-soft sm:px-3"
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
       </div>
     </header>

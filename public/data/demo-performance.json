@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "1",
+  "source": "demo",
+  "asOf": "2026-11-20T08:00:00Z",
+  "timezone": "Asia/Shanghai",
+  "currency": "USD",
+  "account": {
+    "class": "demo",
+    "verified": false,
+    "label": "虚构示例"
+  },
+  "freshness": {
+    "kind": "static-snapshot",
+    "note": "虚构示例，只用于展示界面。不是真实账户，也不是延迟行情。"
+  },
+  "startingBalance": 10000,
+  "startingBalanceTime": "2026-10-01T00:00:00Z",
+  "overview": {
+    "balance": 11553,
+    "equity": 11620,
+    "balanceAsOf": "2026-11-20T08:00:00Z",
+    "equityAsOf": "2026-11-20T08:00:00Z"
+  },
+  "equitySnapshots": [
+    { "time": "2026-10-03T02:00:00Z", "equity": 9800, "balance": 10000 },
+    { "time": "2026-10-05T02:00:00Z", "equity": 10112, "balance": 10112 },
+    { "time": "2026-10-18T02:00:00Z", "equity": 11900, "balance": 12112 },
+    { "time": "2026-10-25T02:00:00Z", "equity": 12240, "balance": 12108 },
+    { "time": "2026-11-05T02:00:00Z", "equity": 11400, "balance": 11521 },
+    { "time": "2026-11-20T08:00:00Z", "equity": 11620, "balance": 11553 }
+  ],
+  "equitySnapshotsNote": "这些权益快照是虚构的，只为演示权益和余额可以不同。真实导出不会用成交去编造这条曲线。",
+  "cashflows": [
+    { "id": "cashflow-1", "time": "2026-10-15T00:00:00Z", "type": "deposit", "amount": 2000 },
+    { "id": "cashflow-2", "time": "2026-11-01T00:00:00Z", "type": "withdrawal", "amount": 500 }
+  ],
+  "closedTrades": [
+    {
+      "id": "closed-1",
+      "symbol": "EURUSD",
+      "side": "buy",
+      "volume": 0.2,
+      "openTime": "2026-10-02T01:00:00Z",
+      "closeTime": "2026-10-05T02:00:00Z",
+      "openPrice": 1.08,
+      "closePrice": 1.086,
+      "profit": 120,
+      "commission": -7,
+      "swap": -1,
+      "partialCloses": 1,
+      "note": null
+    },
+    {
+      "id": "closed-2",
+      "symbol": "XAUUSD",
+      "side": "buy",
+      "volume": 0.1,
+      "openTime": "2026-10-12T01:00:00Z",
+      "closeTime": "2026-10-20T02:00:00Z",
+      "openPrice": 2650,
+      "closePrice": 2651,
+      "profit": 10,
+      "commission": -6,
+      "swap": -8,
+      "partialCloses": 1,
+      "note": null
+    },
+    {
+      "id": "closed-3",
+      "symbol": "USDJPY",
+      "side": "sell",
+      "volume": 0.3,
+      "openTime": "2026-10-21T01:00:00Z",
+      "closeTime": "2026-10-28T02:00:00Z",
+      "openPrice": 151.2,
+      "closePrice": 152.1,
+      "profit": -80,
+      "commission": -7,
+      "swap": 0,
+      "partialCloses": 1,
+      "note": null
+    },
+    {
+      "id": "closed-4",
+      "symbol": "EURUSD",
+      "side": "buy",
+      "volume": 0.4,
+      "openTime": "2026-11-02T01:00:00Z",
+      "closeTime": "2026-11-10T02:00:00Z",
+      "openPrice": 1.09,
+      "closePrice": 1.094,
+      "profit": 40,
+      "commission": -7,
+      "swap": -1,
+      "partialCloses": 2,
+      "note": "aggregated-partial-closes"
+    }
+  ],
+  "warnings": [],
+  "limits": ["closed-positions-only", "demo-not-a-record"]
+}

@@ -5,88 +5,34 @@ import { LegalDocument } from "@/components/LegalDocument";
 import { SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Acceptable Use Policy | DollyZoom",
-  description:
-    "Acceptable use rules for the DollyZoom AI video tool. Sexual, adult, and NSFW video generation is prohibited, along with deepfakes and other harmful uses.",
-  robots: { index: true, follow: true },
+  title: "可接受使用",
+  description: "交易观察的使用边界：不得伪称已验证收益，不得提交账户凭证，不得把本站当成经纪商或跟单服务。",
+  alternates: { canonical: "/acceptable-use/" },
 };
 
 export default function AcceptableUsePage() {
   return (
-    <LegalDocument title="Acceptable Use Policy" updated="November 13, 2026">
+    <LegalDocument title="可接受使用" updated="2026-11-24">
       <p>
-        These rules apply to every use of DollyZoom, including free previews and
-        paid HD unlocks. They are part of the{" "}
-        <Link href="/terms/">Terms of Service</Link>. DollyZoom is an AI video tool
-        that applies a dolly-zoom camera move to a photo. It is not a face-swap,
-        deepfake, or unfiltered generation product.
+        这些规则是 <Link href="/terms/">使用条款</Link> 的一部分。
       </p>
-
-      <h2>Sexual, adult, and NSFW content is prohibited</h2>
-      <p>
-        You may not upload, request, generate, or attempt to generate any of the
-        following, and you may not try to get the tool to do so:
-      </p>
+      <h2>请这样使用</h2>
       <ul>
-        <li>Sexual content</li>
-        <li>Adult content</li>
-        <li>NSFW content</li>
-        <li>Pornographic, nude, or explicit content</li>
-        <li>Sexually suggestive content, including implied sexual content</li>
-        <li>Non-consensual intimate imagery</li>
+        <li>把公开页当作自行申报、未核验的已平仓记录。</li>
+        <li>只发布你有权公开、并且已经去掉账号和未平仓明细的文件。</li>
+        <li>把仓位计算器当成算术工具，合约规格以你自己的经纪商说明为准。</li>
       </ul>
-      <p>
-        This prohibition is absolute on DollyZoom. A request that is blocked by
-        screening must not be reworded to sneak past it.
-      </p>
-
-      <h2>Other prohibited uses</h2>
+      <h2>请不要这样做</h2>
       <ul>
-        <li>
-          Any sexual, exploitative, or nude content involving a minor, and any
-          upload of a minor’s image
-        </li>
-        <li>
-          Deepfakes, face swaps, face replacement, or other tools or prompts
-          meant to change someone’s identity
-        </li>
-        <li>
-          Using a real person’s likeness without their permission, or
-          impersonating someone
-        </li>
-        <li>Extreme violence, gore, or content that promotes terrorism</li>
-        <li>
-          Content that assists fraud, scams, phishing, or other illegal activity
-        </li>
-        <li>Harassment, threats, or hate against a person or group</li>
-        <li>
-          Uploading a photo you do not have the right to use, including
-          copyrighted material you do not own
-        </li>
-        <li>
-          Trying to bypass, disable, or overwhelm content screening, or probing
-          the service for a way around these rules
-        </li>
-        <li>
-          Reselling or misrepresenting the tool as an uncensored, no-filter, or
-          adult generator
-        </li>
+        <li>把示例数据、未连接状态或未验证记录说成真实、已审核或保证获利的战绩。</li>
+        <li>在公开文件或日记里放入密码、登录号、服务器、会话或他人未授权的记录。</li>
+        <li>把本站描述成经纪商、信号服务、跟单系统或自动交易程序。</li>
+        <li>利用页面上的示意价格伪造已经付款或已经开通。</li>
       </ul>
-
-      <h2>What the tool is for</h2>
+      <h2>年龄</h2>
+      <p>本站讨论交易记录，不面向 18 岁以下的人。</p>
       <p>
-        Use DollyZoom to make a dolly-zoom camera move from a photo you are
-        allowed to use, of an adult subject who has agreed to it where consent
-        is required. Do not use it to invent a different person, to remove
-        clothing, or to sexualize the subject.
-      </p>
-
-      <h2>Enforcement</h2>
-      <p>
-        Generation requests are screened before a preview is created. Decisions
-        to deny or flag, and any screening failure, stop the preview. We may
-        refuse further use of the service if these rules are broken. Report
-        abuse to <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+        发现公开文件里出现了不该出现的凭证，请邮件联系 <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>，并换掉相关密码。本站没有在线表单。
       </p>
     </LegalDocument>
   );

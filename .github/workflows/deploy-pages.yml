@@ -50,7 +50,7 @@ jobs:
         # the domain root and on a github.io project path.
         run: python3 scripts/relativize-pages-export.py
 
-      - name: Test moderation proxy
+      - name: Test
         run: npm test
 
       - name: Assert root-path export
@@ -64,19 +64,20 @@ jobs:
             exit 1
           fi
           grep -qx 'dollyzoom.top' out/CNAME
-          grep -q 'https://www.creem.io/payment/prod_w9pGaP1bfoaF20iNiGXKt' out/index.html
-          grep -q 'Zjs315416174@gmail.com' out/index.html
-          grep -q '/demo/dolly-zoom.mp4' out/index.html
+          if grep -R -n -E 'creem\.io|dolly-zoom\.mp4|order_send|CREEM_API_KEY|creem_test_|x-api-key' out \
+            --include='*.html' --include='*.js' --include='*.json'; then
+            echo "Pages bundle still contains the old checkout, video, or a secret-like string" >&2
+            exit 1
+          fi
+          python3 -c 'import json; from pathlib import Path; data=json.loads(Path("out/data/performance.json").read_text()); assert data["source"]=="unconnected"; assert data["account"]["class"]=="unknown"; assert data["overview"]["balance"] is None; assert data["overview"]["equity"] is None; assert data["closedTrades"]==[]; assert data["cashflows"]==[]'
+          test -f out/tools/index.html
+          test -f out/pricing/index.html
           test -f out/terms/index.html
           test -f out/privacy/index.html
           test -f out/acceptable-use/index.html
-          test -f out/demo/before.jpg
-          test -f out/demo/dolly-zoom.mp4
-          if grep -R -n -E 'Sample clip TBD|CREEM_API_KEY|creem_test_|x-api-key' out \
-            --include='*.html' --include='*.js' --include='*.json'; then
-            echo "Pages bundle contains a placeholder or secret-like string" >&2
-            exit 1
-          fi
+          grep -q '交易观察' out/index.html
+          grep -q '自行申报' out/index.html
+          grep -q '尚未开放' out/pricing/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

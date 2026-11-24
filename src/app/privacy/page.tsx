@@ -1,103 +1,37 @@
 import type { Metadata } from "next";
 
 import { LegalDocument } from "@/components/LegalDocument";
-import { SUPPORT_EMAIL } from "@/lib/site";
+import { OPERATOR_NAME, SITE_URL, SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | DollyZoom",
-  description:
-    "Privacy Policy for DollyZoom. How junshan zhao handles photos, support email, content screening, and Creem checkout.",
-  robots: { index: true, follow: true },
+  title: "隐私说明",
+  description: "交易观察如何处理公开静态文件和浏览器本地日记。本站不收集账号密码，也没有注册。",
+  alternates: { canonical: "/privacy/" },
 };
 
 export default function PrivacyPage() {
   return (
-    <LegalDocument title="Privacy Policy" updated="November 23, 2026">
+    <LegalDocument title="隐私说明" updated="2026-11-24">
       <p>
-        This policy explains how DollyZoom at{" "}
-        <a href="https://dollyzoom.top/">dollyzoom.top</a> handles information.
-        The operator is junshan zhao, an individual in China. Contact{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
+        本说明适用于 {SITE_URL}。运营者是 {OPERATOR_NAME}。联系邮箱是{" "}
+        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>。
       </p>
-
-      <h2>Photos you upload</h2>
+      <h2>公开静态文件</h2>
       <p>
-        The free preview is created in your browser from the file you choose.
-        That preview does not upload the photo to a DollyZoom server. It stays
-        on your device unless your own browser or an extension sends it
-        somewhere else. We do not build a gallery from customer photos.
+        概览读取网站上的 performance.json。那是一份人工放上去的静态文件，不是实时账户接口。它应当只包含已平仓统计、你批准的时点余额或权益，以及货币、时区和 as-of。它不应该包含账号、密码、服务器、会话或未平仓明细。
       </p>
+      <h2>我们不通过这个网站收集的内容</h2>
+      <p>没有注册，没有通讯订阅，也没有留言表单。仓位计算和日记导入不会把文件发到我们的服务器。我们也不在页面里放置支付密钥。</p>
+      <h2>浏览器本地存储</h2>
       <p>
-        Generate HD is different. That button uploads the photo to our proxy,
-        which sends it to Alibaba Cloud Model Studio (DashScope, dashscope.aliyuncs.com)
-        to render a short silent video with Wan. We do not keep the photo after
-        the request. The returned video link expires in about 24 hours.
+        两个开关会写在你的浏览器里：是否正在查看虚构示例，以及本地日记。它们留在这台设备上。我们读不到另一台设备上的日记。你可以用工具页的清除按钮或浏览器的站点数据设置删掉它们。
       </p>
-
-      <h2>Content screening</h2>
+      <h2>托管</h2>
       <p>
-        Before a preview is created, the site asks our moderation proxy to
-        screen the generation. The proxy sends the prompt for that request to
-        Creem’s Content Moderation API (
-        <a href="https://api.creem.io/v1/moderation/prompt">
-          api.creem.io/v1/moderation/prompt
-        </a>
-        ). For the standard dolly-zoom effect that prompt is the fixed effect
-        description, plus any text you submit if a text field is offered. The
-        photo itself is not part of that call. Creem returns a decision. We
-        block the preview unless the decision is allow. That includes sexual,
-        adult, and NSFW requests: they are not previewed. The API key for the
-        screening call stays on the server.
+        页面是静态文件，由 GitHub Pages 提供。浏览器向这个域名请求 HTML、脚本和 JSON 时，托管方会按它自己的政策处理连接日志。本站没有另建账户数据库。
       </p>
-
-      <h2>Payments</h2>
-      <p>
-        HD purchases are checked out by Creem, the merchant of record. Creem
-        collects the payment details, billing email, and related records on its
-        own checkout page. We do not receive or store your card number. Creem’s
-        privacy policy describes how it handles that information.
-      </p>
-
-      <h2>Support email</h2>
-      <p>
-        If you email {SUPPORT_EMAIL}, we use the message to answer you. We keep
-        it for as long as needed to handle the request and any follow-up, then
-        delete it when we no longer need it.
-      </p>
-
-      <h2>Cookies and hosting</h2>
-      <p>
-        The site is a static site hosted on GitHub Pages. We do not set
-        advertising or analytics cookies. Creem may set cookies on creem.io
-        after you continue to checkout.
-      </p>
-
-      <h2>Sharing</h2>
-      <p>
-        We share the screening prompt with Creem so the generation can be
-        checked. We share payment processing with Creem when you buy HD. When
-        you click Generate HD, we share that photo and the screened prompt with
-        Alibaba Cloud Model Studio so it can render the video. We do not sell
-        personal information. We may disclose information if the law requires it.
-      </p>
-
-      <h2>International processing</h2>
-      <p>
-        The operator is in China. GitHub Pages, Creem, and Alibaba Cloud may
-        process data in other countries. By using the site or emailing support,
-        you understand that this processing is needed to run the service.
-      </p>
-
-      <h2>Children</h2>
-      <p>
-        DollyZoom is not for anyone under 18. Do not upload photos of minors.
-      </p>
-
-      <h2>Contact</h2>
-      <p>
-        Privacy questions:{" "}
-        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
-      </p>
+      <h2>示例数据</h2>
+      <p>示例文件是虚构的，用来展示界面。打开示例不会把你的终端或日记上传出去。</p>
     </LegalDocument>
   );
 }

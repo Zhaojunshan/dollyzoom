@@ -1,0 +1,160 @@
+{
+  "deals": [
+    {
+      "positionId": "ticket-should-not-leak",
+      "symbol": "EURUSD",
+      "time": "2026-01-01T00:00:00Z",
+      "type": "buy",
+      "entry": "in",
+      "volume": 1,
+      "price": 1.1,
+      "commission": -3,
+      "swap": 0,
+      "profit": 0
+    },
+    {
+      "positionId": "ticket-should-not-leak",
+      "symbol": "EURUSD",
+      "time": "2026-01-02T00:00:00Z",
+      "type": "sell",
+      "entry": "out",
+      "volume": 0.4,
+      "price": 1.2,
+      "commission": -1,
+      "swap": -0.5,
+      "profit": 40
+    },
+    {
+      "positionId": "p-gold",
+      "symbol": "XAUUSD",
+      "time": "2026-02-01T00:00:00Z",
+      "type": "buy",
+      "entry": "in",
+      "volume": 1,
+      "price": 2300,
+      "commission": -5,
+      "swap": 0,
+      "profit": 0
+    },
+    {
+      "positionId": "p-gold",
+      "symbol": "XAUUSD",
+      "time": "2026-02-02T00:00:00Z",
+      "type": "sell",
+      "entry": "out",
+      "volume": 0.25,
+      "price": 2310,
+      "commission": -1,
+      "swap": -1,
+      "profit": 25
+    },
+    {
+      "positionId": "p-gold",
+      "symbol": "XAUUSD",
+      "time": "2026-02-03T00:00:00Z",
+      "type": "sell",
+      "entry": "out",
+      "volume": 0.75,
+      "price": 2302,
+      "commission": -2,
+      "swap": -1,
+      "profit": 15
+    },
+    {
+      "positionId": "p-fee",
+      "symbol": "EURUSD",
+      "time": "2026-03-01T00:00:00Z",
+      "type": "buy",
+      "entry": "in",
+      "volume": 0.1,
+      "price": 1.1,
+      "commission": -4,
+      "swap": 0,
+      "profit": 0
+    },
+    {
+      "positionId": "p-fee",
+      "symbol": "EURUSD",
+      "time": "2026-03-02T00:00:00Z",
+      "type": "sell",
+      "entry": "out",
+      "volume": 0.1,
+      "price": 1.1005,
+      "commission": -2,
+      "swap": -1,
+      "profit": 5
+    },
+    {
+      "positionId": null,
+      "symbol": "",
+      "time": "2026-01-15T00:00:00Z",
+      "type": "balance",
+      "entry": null,
+      "volume": 0,
+      "price": 0,
+      "commission": 0,
+      "swap": 0,
+      "profit": 1000
+    },
+    {
+      "positionId": null,
+      "symbol": "",
+      "time": "2026-03-10T00:00:00Z",
+      "type": "balance",
+      "entry": null,
+      "volume": 0,
+      "price": 0,
+      "commission": 0,
+      "swap": 0,
+      "profit": -200
+    },
+    {
+      "positionId": null,
+      "symbol": "",
+      "time": "2026-03-11T00:00:00Z",
+      "type": "credit",
+      "entry": null,
+      "volume": 0,
+      "price": 0,
+      "commission": 0,
+      "swap": 0,
+      "profit": 50
+    },
+    {
+      "positionId": null,
+      "symbol": "EURUSD",
+      "time": "2026-03-12T00:00:00Z",
+      "type": "buy",
+      "entry": "in",
+      "volume": 0.1,
+      "price": 1.1,
+      "commission": 0,
+      "swap": 0,
+      "profit": 0
+    },
+    {
+      "positionId": "p-inout",
+      "symbol": "USDJPY",
+      "time": "2026-04-01T00:00:00Z",
+      "type": "buy",
+      "entry": "in",
+      "volume": 1,
+      "price": 150,
+      "commission": -1,
+      "swap": 0,
+      "profit": 0
+    },
+    {
+      "positionId": "p-inout",
+      "symbol": "USDJPY",
+      "time": "2026-04-02T00:00:00Z",
+      "type": "sell",
+      "entry": "inout",
+      "volume": 2,
+      "price": 151,
+      "commission": -1,
+      "swap": 0,
+      "profit": 100
+    }
+  ]
+}

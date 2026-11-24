@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local MT5 export; never commit a terminal snapshot by accident
+mt5-export.local.json
+*.local.json
+__pycache__/
