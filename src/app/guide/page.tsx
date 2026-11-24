@@ -2,27 +2,27 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "说明",
-  description: "仓位计算、回撤与收益、MT5 已平仓日记的说明。不提供当前行情，也不承诺收益。",
-  keywords: ["仓位计算说明", "回撤", "MT5 已平仓日记"],
+  title: "Notes",
+  description: "How position size, drawdown, return, and an MT5 closed-trade journal are defined here. No live quotes and no profit promise.",
+  keywords: ["position size", "drawdown", "MT5 closed trades"],
   alternates: { canonical: "/guide/" },
 };
 
 const articles = [
   {
     href: "/guide/position-size/",
-    title: "仓位和 tick",
-    text: "风险金额、手数步长，以及为什么 XAUUSD 不能用外汇点值。",
+    title: "Position size and ticks",
+    text: "Risk amount, volume step, and why XAUUSD is not an FX pip of 0.0001.",
   },
   {
     href: "/guide/drawdown/",
-    title: "回撤和收益",
-    text: "已实现盈亏回撤、权益回撤和修正迪茨收益率分别在什么前提下才出现。",
+    title: "Drawdown and return",
+    text: "When realized P&L drawdown, equity drawdown, and Modified Dietz are available.",
   },
   {
     href: "/guide/mt5-journal/",
-    title: "MT5 日记",
-    text: "成交、部分平仓和未平仓怎样进入或排除公开表。",
+    title: "MT5 journal",
+    text: "How deals, partial closes, and open positions enter or stay off the public table.",
   },
 ];
 
@@ -30,9 +30,9 @@ export default function GuideIndexPage() {
   return (
     <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
       <p className="text-xs font-medium tracking-[0.16em] text-accent">NOTES</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight">说明</h1>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight">Notes</h1>
       <p className="mt-3 text-sm leading-7 text-muted">
-        这些页面解释本站实际在算的东西。它们不引用实时报价，也不把示例数据说成市场结论。
+        These pages explain the calculations this site actually performs. They do not quote a live market, and they do not treat the sample board as a market conclusion.
       </p>
       <div className="mt-6 grid gap-3">
         {articles.map((article) => (

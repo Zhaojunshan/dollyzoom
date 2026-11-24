@@ -92,7 +92,7 @@ function splitCsv(text) {
 
 function numberAt(row, index, label, errors, line) {
   const value = parseUserNumber(row[index] ?? "");
-  if (!Number.isFinite(value)) errors.push(`第 ${line} 行：${label} 不是有效数字`);
+  if (!Number.isFinite(value)) errors.push(`Row ${line}: ${label} is not a valid number`);
   return value;
 }
 
@@ -103,8 +103,8 @@ function journalFromParts({ currency, timezone, startingBalance, startingBalance
     asOf: "2026-01-01T00:00:00Z",
     timezone,
     currency,
-    account: { class: "unknown", verified: false, label: "本地日记" },
-    freshness: { kind: "static-snapshot", note: "浏览器本地日记，未发布。" },
+    account: { class: "unknown", verified: false, label: "Local journal" },
+    freshness: { kind: "static-snapshot", note: "Browser-local journal. Not published." },
     startingBalance,
     startingBalanceTime,
     overview: { balance: null, equity: null, balanceAsOf: null, equityAsOf: null },
@@ -116,27 +116,27 @@ function journalFromParts({ currency, timezone, startingBalance, startingBalance
     limits: ["local-only"],
   };
   const parsed = parseFeed(feed);
-  if (!parsed.ok) return { ok: false, errors: [parsed.error === "sensitive" ? "文件含有不应保存的字段" : "记录格式不正确"] };
+  if (!parsed.ok) return { ok: false, errors: [parsed.error === "sensitive" ? "The file contains fields that must not be stored" : "The records are not in a supported shape"] };
   return { ok: true, journal: { ...parsed.feed, published: false } };
 }
 
 function contextFrom(input, errors) {
   const currency = typeof input.currency === "string" ? input.currency.trim().toUpperCase() : "";
-  if (!/^[A-Z]{3}$/.test(currency)) errors.push("请填写三位账户货币代码，例如 USD");
+  if (!/^[A-Z]{3}$/.test(currency)) errors.push("Enter a three-letter account currency, for example USD");
   const timezone = typeof input.timezone === "string" && input.timezone.trim() ? input.timezone.trim() : null;
-  if (timezone && timezone.length > 64) errors.push("时区名称过长");
+  if (timezone && timezone.length > 64) errors.push("The time zone name is too long");
   let startingBalance = null;
   const balanceText = typeof input.startingBalance === "string" ? input.startingBalance.trim() : "";
   if (balanceText) {
     startingBalance = parseUserNumber(balanceText);
-    if (!Number.isFinite(startingBalance)) errors.push("期初余额不是有效数字");
+    if (!Number.isFinite(startingBalance)) errors.push("Starting balance is not a valid number");
   }
   const startingBalanceTime =
     typeof input.startingBalanceTime === "string" && input.startingBalanceTime.trim()
       ? input.startingBalanceTime.trim()
       : null;
-  if (startingBalanceTime && !isIsoTime(startingBalanceTime)) errors.push("期初余额时间不是有效时间");
-  if (startingBalance == null && startingBalanceTime) errors.push("填写了期初时间但没有期初余额");
+  if (startingBalanceTime && !isIsoTime(startingBalanceTime)) errors.push("Starting-balance time is not a valid timestamp");
+  if (startingBalance == null && startingBalanceTime) errors.push("A starting-balance time was provided without a starting balance");
   return { currency, timezone, startingBalance, startingBalanceTime };
 }
 
@@ -150,7 +150,7 @@ export function parseJournalText(text, context) {
   const shared = contextFrom(context, errors);
   if (errors.length) return { ok: false, errors };
   const trimmed = typeof text === "string" ? text.trim() : "";
-  if (!trimmed) return { ok: false, errors: ["文件是空的"] };
+  if (!trimmed) return { ok: false, errors: ["The file is empty"] };
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) return parseJournalJson(trimmed, shared);
   return parseJournalCsv(trimmed, shared);
 }
@@ -160,15 +160,15 @@ function parseJournalJson(text, shared) {
   try {
     data = JSON.parse(text);
   } catch {
-    return { ok: false, errors: ["JSON 无法解析"] };
+    return { ok: false, errors: ["The JSON could not be parsed"] };
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    return { ok: false, errors: ["JSON 需要是一个对象"] };
+    return { ok: false, errors: ["JSON must be an object"] };
   }
-  if (containsForbidden(data)) return { ok: false, errors: ["文件含有不应保存的字段"] };
+  if (containsForbidden(data)) return { ok: false, errors: ["The file contains fields that must not be stored"] };
   const trades = Array.isArray(data.closedTrades) ? data.closedTrades : null;
   const cashflows = Array.isArray(data.cashflows) ? data.cashflows : [];
-  if (!trades) return { ok: false, errors: ["JSON 需要 closedTrades 数组"] };
+  if (!trades) return { ok: false, errors: ["JSON needs a closedTrades array"] };
   return journalFromParts({
     currency: data.currency || shared.currency,
     timezone: data.timezone ?? shared.timezone,
@@ -200,9 +200,9 @@ function parseJournalJson(text, shared) {
 
 function parseJournalCsv(text, shared) {
   const rows = splitCsv(text);
-  if (rows.length < 2) return { ok: false, errors: ["CSV 至少需要表头和一行记录"] };
+  if (rows.length < 2) return { ok: false, errors: ["CSV needs a header and at least one row"] };
   const header = rows[0].map((cell) => cell.trim()).join(",");
-  if (header !== CSV_HEADER) return { ok: false, errors: ["CSV 表头与说明不一致"] };
+  if (header !== CSV_HEADER) return { ok: false, errors: ["The CSV header does not match the documented columns"] };
 
   const errors = [];
   const closedTrades = [];
@@ -210,26 +210,26 @@ function parseJournalCsv(text, shared) {
   rows.slice(1).forEach((row, index) => {
     const line = index + 2;
     if (row.length !== 14) {
-      errors.push(`第 ${line} 行：列数应为 14`);
+      errors.push(`Row ${line}: expected 14 columns`);
       return;
     }
     const recordType = row[0].trim();
     if (recordType === "trade") {
-      const volume = numberAt(row, 3, "手数", errors, line);
-      const openPrice = numberAt(row, 6, "开仓价", errors, line);
-      const closePrice = numberAt(row, 7, "平仓价", errors, line);
-      const profit = numberAt(row, 8, "价格盈亏", errors, line);
-      const commission = numberAt(row, 9, "佣金", errors, line);
-      const swap = numberAt(row, 10, "库存费", errors, line);
+      const volume = numberAt(row, 3, "volume", errors, line);
+      const openPrice = numberAt(row, 6, "open price", errors, line);
+      const closePrice = numberAt(row, 7, "close price", errors, line);
+      const profit = numberAt(row, 8, "price P&L", errors, line);
+      const commission = numberAt(row, 9, "commission", errors, line);
+      const swap = numberAt(row, 10, "swap", errors, line);
       const side = row[2].trim();
       const openTime = row[4].trim();
       const closeTime = row[5].trim();
-      if (!(volume > 0)) errors.push(`第 ${line} 行：手数必须大于 0`);
-      if (side !== "buy" && side !== "sell") errors.push(`第 ${line} 行：方向只能是 buy 或 sell`);
-      if (!isIsoTime(openTime) || !isIsoTime(closeTime)) errors.push(`第 ${line} 行：开平仓时间无效`);
-      else if (Date.parse(closeTime) < Date.parse(openTime)) errors.push(`第 ${line} 行：平仓时间早于开仓时间`);
+      if (!(volume > 0)) errors.push(`Row ${line}: volume must be greater than 0`);
+      if (side !== "buy" && side !== "sell") errors.push(`Row ${line}: side must be buy or sell`);
+      if (!isIsoTime(openTime) || !isIsoTime(closeTime)) errors.push(`Row ${line}: open or close time is invalid`);
+      else if (Date.parse(closeTime) < Date.parse(openTime)) errors.push(`Row ${line}: close time is earlier than open time`);
       if (row[11].trim() || row[12].trim() || row[13].trim()) {
-        errors.push(`第 ${line} 行：交易行不要填写出入金列`);
+        errors.push(`Row ${line}: a trade row must leave the cash-flow columns empty`);
       }
       closedTrades.push({
         id: `local-${closedTrades.length + 1}`,
@@ -249,12 +249,12 @@ function parseJournalCsv(text, shared) {
       return;
     }
     if (recordType === "cashflow") {
-      const amount = numberAt(row, 12, "出入金金额", errors, line);
+      const amount = numberAt(row, 12, "cash-flow amount", errors, line);
       const type = row[13].trim();
       const time = row[11].trim();
-      if (type !== "deposit" && type !== "withdrawal") errors.push(`第 ${line} 行：出入金类型只能是 deposit 或 withdrawal`);
-      if (!isIsoTime(time)) errors.push(`第 ${line} 行：出入金时间无效`);
-      if (!(amount > 0)) errors.push(`第 ${line} 行：出入金金额必须为正数，方向用类型表示`);
+      if (type !== "deposit" && type !== "withdrawal") errors.push(`Row ${line}: cash-flow type must be deposit or withdrawal`);
+      if (!isIsoTime(time)) errors.push(`Row ${line}: cash-flow time is invalid`);
+      if (!(amount > 0)) errors.push(`Row ${line}: cash-flow amount must be positive; use the type for direction`);
       cashflows.push({
         id: `cashflow-${cashflows.length + 1}`,
         time,
@@ -263,7 +263,7 @@ function parseJournalCsv(text, shared) {
       });
       return;
     }
-    errors.push(`第 ${line} 行：recordType 只能是 trade 或 cashflow`);
+    errors.push(`Row ${line}: recordType must be trade or cashflow`);
   });
   if (errors.length) return { ok: false, errors };
   return journalFromParts({ ...shared, cashflows, closedTrades });

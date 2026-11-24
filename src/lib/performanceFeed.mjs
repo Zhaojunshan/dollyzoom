@@ -368,7 +368,7 @@ export function freshnessOf(feed, nowMs) {
 }
 
 function buildBalanceSeries(feed, trades) {
-  const label = "已实现余额（期初余额 + 出入金 + 已平仓净盈亏）";
+  const label = "Realized balance (starting balance + cash flows + closed net P&L)";
   if (feed.startingBalance == null) {
     return { available: false, reason: "missing-starting-balance", points: [], maxDrop: null, label };
   }
@@ -404,7 +404,7 @@ function buildBalanceSeries(feed, trades) {
 }
 
 function buildPnlDrawdown(trades) {
-  const label = "已实现盈亏回撤（只含已平仓净盈亏，不是权益回撤）";
+  const label = "Realized P&L drawdown (closed net P&L only, not equity drawdown)";
   if (trades.length === 0) {
     return { available: false, reason: "no-closed-trades", maxDrawdown: null, peak: null, points: [], label };
   }
@@ -423,7 +423,7 @@ function buildPnlDrawdown(trades) {
 }
 
 function buildEquitySeries(snapshots) {
-  const label = "权益回撤（只基于给出的快照，快照之间的路径未知）";
+  const label = "Equity drawdown (supplied snapshots only; the path between snapshots is unknown)";
   if (snapshots.length === 0) {
     return {
       available: false,
@@ -533,7 +533,7 @@ function emptyMetrics(feed, nowMs) {
       reason: "unconnected",
       points: [],
       maxDrop: null,
-      label: "已实现余额",
+      label: "Realized balance",
     },
     equitySeries: {
       available: false,
@@ -543,7 +543,7 @@ function emptyMetrics(feed, nowMs) {
       drawdown: null,
       drawdownPeak: null,
       drawdownReason: "unconnected",
-      label: "权益",
+      label: "Equity",
     },
     realizedPnlDrawdown: {
       available: false,
@@ -551,7 +551,7 @@ function emptyMetrics(feed, nowMs) {
       maxDrawdown: null,
       peak: null,
       points: [],
-      label: "已实现盈亏回撤",
+      label: "Realized P&L drawdown",
     },
     dietz: {
       available: false,

@@ -61,7 +61,7 @@ export function buildBreakdown(view) {
   const trades = Array.isArray(view.trades) ? view.trades : [];
   const symbols = new Map();
   const months = new Map();
-  const zoneLabel = view.timezone || "UTC（数据文件没有时区）";
+  const zoneLabel = view.timezone || "UTC (the file did not declare a time zone)";
   let monthFailed = false;
 
   for (const trade of trades) {

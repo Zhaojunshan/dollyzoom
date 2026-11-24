@@ -11,7 +11,7 @@
   },
   "freshness": {
     "kind": "unconnected",
-    "note": "尚未发布任何交易记录。这不是延迟行情，也没有连接终端。"
+    "note": "No trading record has been published. This is not a delayed quote, and no terminal is connected."
   },
   "startingBalance": null,
   "startingBalanceTime": null,

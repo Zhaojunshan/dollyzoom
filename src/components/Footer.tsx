@@ -8,37 +8,37 @@ export function Footer() {
       <div className="mx-auto grid max-w-6xl gap-6 text-sm sm:grid-cols-3">
         <div className="space-y-2">
           <p className="font-medium">{SITE_NAME}</p>
-          <p className="text-muted">已平仓记录和浏览器里的计算工具。不是经纪商，不提供信号、跟单或收益保证。</p>
+          <p className="text-muted">Closed-trade records and browser calculators. Not a broker. No signals, copy trading, or profit promise.</p>
         </div>
         <div className="space-y-2">
-          <p className="font-medium">开始使用</p>
+          <p className="font-medium">Start</p>
           <Link href="/#records" className="block hover:text-accent">
-            查看平仓记录
+            View closed trades
           </Link>
           <Link href="/tools/#size" className="block hover:text-accent">
-            免费使用仓位计算
+            Use the free position calculator
           </Link>
           <Link href="/guide/" className="block hover:text-accent">
-            阅读说明
+            Read the notes
           </Link>
         </div>
-        <nav aria-label="政策" className="flex flex-col gap-2">
+        <nav aria-label="Policies" className="flex flex-col gap-2">
           <Link href="/pricing/" className="hover:text-accent">
-            价格与尚未开放的订阅
+            Pricing and the closed subscription
           </Link>
           <Link href="/terms/" className="hover:text-accent">
-            使用条款
+            Terms
           </Link>
           <Link href="/privacy/" className="hover:text-accent">
-            隐私说明
+            Privacy
           </Link>
           <Link href="/acceptable-use/" className="hover:text-accent">
-            可接受使用
+            Acceptable use
           </Link>
         </nav>
       </div>
       <p className="mx-auto mt-6 max-w-6xl text-xs text-muted">
-        {SITE_URL.replace("https://", "")} · © 2026 {SITE_NAME}. 本站没有联系表单。过往记录不代表未来结果。
+        {SITE_URL.replace("https://", "")} · © 2026 {SITE_NAME}. No contact form. Past records are not future results.
       </p>
     </footer>
   );

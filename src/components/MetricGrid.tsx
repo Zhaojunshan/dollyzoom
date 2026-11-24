@@ -19,19 +19,19 @@ type Model = {
 };
 
 const REASONS: Record<string, string> = {
-  unconnected: "尚未发布记录",
-  "missing-starting-balance": "没有期初余额",
-  "missing-time": "缺少时间",
-  "no-equity-snapshots": "没有权益快照",
-  "single-snapshot": "只有一个权益时点",
-  "no-closed-trades": "没有已平仓记录",
-  "non-positive-period": "时间区间不够",
-  "non-positive-capital": "资金分母不是正数",
+  unconnected: "No record has been published",
+  "missing-starting-balance": "No starting balance",
+  "missing-time": "A time is missing",
+  "no-equity-snapshots": "No equity snapshots",
+  "single-snapshot": "Only one equity reading",
+  "no-closed-trades": "No closed trades",
+  "non-positive-period": "The time span is not positive",
+  "non-positive-capital": "The capital denominator is not positive",
 };
 
 function reasonText(code: string | null) {
-  if (!code) return "不可用";
-  return REASONS[code] ?? "不可用";
+  if (!code) return "Unavailable";
+  return REASONS[code] ?? "Unavailable";
 }
 
 function ratio(drop: number | null, peak: number | null) {
@@ -43,93 +43,83 @@ export function MetricGrid({ model }: { model: Model }) {
   const currency = model.currency;
   const cards = [
     {
-      label: "已平仓笔数",
-      en: "Closed trades",
+      label: "Closed trades",
       value: model.tradeCount == null ? "—" : String(model.tradeCount),
-      note: model.tradeCount == null ? "未知，不是 0" : `${model.wins ?? 0} 盈 · ${model.losses ?? 0} 亏 · ${model.flats ?? 0} 平`,
+      note: model.tradeCount == null ? "Unknown, not zero" : `${model.wins ?? 0} wins · ${model.losses ?? 0} losses · ${model.flats ?? 0} flat`,
     },
     {
-      label: "胜率",
-      en: "Win rate",
+      label: "Win rate",
       value: formatPlainPercent(model.winRate),
-      note: "净盈亏大于 0 才算赢。没有记录时未知。",
+      note: "A win is net P&L above zero. Unknown when there are no trades.",
     },
     {
-      label: "净盈亏",
-      en: "Net P&L",
+      label: "Net P&L",
       value: formatSignedMoney(model.netPnl, currency),
       word: signedWord(model.netPnl),
-      note: "价格盈亏 + 佣金 + 库存费",
+      note: "Price result + commission + swap",
       tone: model.netPnl,
     },
     {
-      label: "费用",
-      en: "Commission + swap",
+      label: "Fees",
       value: formatSignedMoney(model.fees, currency),
       word: signedWord(model.fees),
-      note: "已包含在净盈亏里，这里单独列出",
+      note: "Already inside net P&L. Shown again so the cost is visible.",
       tone: model.fees,
     },
     {
-      label: "出入金净额",
-      en: "Cashflows",
+      label: "Cash flows",
       value: formatSignedMoney(model.cashflowNet, currency),
-      word: model.cashflowNet == null ? "未知" : "不是盈亏",
-      note: "入金为正，出金为负。不计入胜率。",
+      word: model.cashflowNet == null ? "Unknown" : "Not P&L",
+      note: "Deposits positive, withdrawals negative. Excluded from win rate.",
     },
     {
-      label: "推算已实现余额",
-      en: "Realized balance",
+      label: "Realized balance",
       value: formatMoney(model.reconstructedBalance, currency),
-      note: "需要期初余额。未知时保持空白。",
+      note: "Needs a starting balance. Stays blank when unknown.",
     },
     {
-      label: "时点余额 / 权益",
-      en: "Balance / equity",
+      label: "Point balance / equity",
       value:
         model.pointBalance == null && model.pointEquity == null
           ? "—"
           : `${formatMoney(model.pointBalance, currency)} / ${formatMoney(model.pointEquity, currency)}`,
-      note: "导出时点的读数。权益可以不同于余额。",
+      note: "One reading at export time. Equity can differ from balance.",
     },
     {
-      label: "已实现盈亏回撤",
-      en: "Realized P&L drawdown",
+      label: "Realized P&L drawdown",
       value: formatSignedMoney(model.realizedPnlDrawdown.maxDrawdown, currency),
       word: signedWord(model.realizedPnlDrawdown.maxDrawdown),
       note: model.realizedPnlDrawdown.available
-        ? `相对累计净盈亏峰值 ${formatPercent(ratio(model.realizedPnlDrawdown.maxDrawdown, model.realizedPnlDrawdown.peak))}。不是权益回撤。`
-        : `${reasonText(model.realizedPnlDrawdown.reason ?? "no-closed-trades")}。不是权益回撤。`,
+        ? `${formatPercent(ratio(model.realizedPnlDrawdown.maxDrawdown, model.realizedPnlDrawdown.peak))} from the cumulative net-P&L peak. Not equity drawdown.`
+        : `${reasonText(model.realizedPnlDrawdown.reason ?? "no-closed-trades")}. Not equity drawdown.`,
       tone: model.realizedPnlDrawdown.maxDrawdown,
     },
     {
-      label: "权益回撤",
-      en: "Equity drawdown",
+      label: "Equity drawdown",
       value: formatSignedMoney(model.equitySeries.drawdown, currency),
       word: signedWord(model.equitySeries.drawdown),
-      note: model.equitySeries.drawdown == null
-        ? `${reasonText(model.equitySeries.drawdownReason)}。不能用成交代替。`
-        : `只基于快照，相对峰值 ${formatPercent(ratio(model.equitySeries.drawdown, model.equitySeries.drawdownPeak))}。快照之间未知。`,
+      note:
+        model.equitySeries.drawdown == null
+          ? `${reasonText(model.equitySeries.drawdownReason)}. Deals cannot stand in for it.`
+          : `Snapshots only, ${formatPercent(ratio(model.equitySeries.drawdown, model.equitySeries.drawdownPeak))} from the snapshot peak. The path between snapshots is unknown.`,
       tone: model.equitySeries.drawdown,
     },
     {
-      label: "已实现余额收益率",
-      en: "Modified Dietz",
+      label: "Realized-balance return",
       value: model.dietz.available ? formatPercent(model.dietz.rate) : "—",
-      note: model.dietz.available ? "修正迪茨，基于已实现余额，不是权益时间加权收益。" : `${reasonText(model.dietz.reason)}，所以收益率不可用。`,
+      note: model.dietz.available
+        ? "Modified Dietz on realized balance. Not an equity time-weighted return."
+        : `${reasonText(model.dietz.reason)}, so the return stays unavailable.`,
     },
   ];
 
   return (
-    <section aria-label="摘要指标">
+    <section aria-label="Summary">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {cards.map((card) => (
-          <article key={card.en} className="rounded-2xl border border-card-border bg-card px-3 py-3 sm:px-4">
-            <h3 className="text-sm font-medium leading-5">
-              {card.label}
-              <span className="mt-0.5 block text-[11px] font-normal text-muted">{card.en}</span>
-            </h3>
-            <p className={`num mt-3 text-lg leading-6 sm:text-xl ${card.tone != null && card.tone < 0 ? "text-negative" : card.tone != null && card.tone > 0 ? "text-positive" : ""}`}>
+          <article key={card.label} className="rounded-xl border border-card-border bg-card px-3 py-3 sm:px-4">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted">{card.label}</h3>
+            <p className={`num mt-2 text-lg leading-6 sm:text-xl ${card.tone != null && card.tone < 0 ? "text-negative" : card.tone != null && card.tone > 0 ? "text-positive" : ""}`}>
               {card.word ? <span className="sr-only">{card.word}</span> : null}
               {card.value}
             </p>

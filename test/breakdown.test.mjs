@@ -75,7 +75,7 @@ test("fee drag stays unknown when price P&L is not positive", () => {
   assert.equal(empty.reason, "no-closed-trades");
   assert.equal(empty.feeDrag, null);
   assert.deepEqual(empty.symbols, []);
-  assert.equal(empty.zoneLabel.includes("没有时区"), true);
+  assert.equal(empty.zoneLabel.includes("did not declare"), true);
 });
 
 test("an unconnected view does not become a zero breakdown", () => {

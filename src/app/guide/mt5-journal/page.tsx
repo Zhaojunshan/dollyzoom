@@ -4,39 +4,37 @@ import Link from "next/link";
 import { GuideArticle } from "@/components/GuideArticle";
 
 export const metadata: Metadata = {
-  title: "MT5 已平仓日记",
-  description: "MT5 的单笔成交不是一条已平仓记录。部分平仓在全部平完后合并。未平仓和账户密码不会进入公开页面。",
-  keywords: ["MT5 交易日记", "已平仓", "部分平仓", "成交和持仓"],
+  title: "MT5 closed-trade journal",
+  description:
+    "An MT5 deal is not one closed trade. Partial closes are combined only when the position is flat. Open positions and account secrets stay off the public page.",
+  keywords: ["MT5 trade journal", "closed trades", "partial close", "deals and positions"],
   alternates: { canonical: "/guide/mt5-journal/" },
 };
 
 export default function Mt5JournalGuidePage() {
   return (
-    <GuideArticle kicker="MT5 JOURNAL" title="日记记录的是已经平掉的回合">
+    <GuideArticle kicker="MT5 JOURNAL" title="The journal keeps finished round turns">
       <p>
-        MT5 历史里的一笔 deal 只是开仓、平仓或资金变动的一条。公开页和本地日记使用的是完全平掉的回合。
-        <Link href="/#records"> 查看平仓记录 </Link>
-        在没有发布文件时保持未连接。
+        One MT5 deal is a single open, close, or balance change. The public page and the local journal use a round turn that is fully flat.{" "}
+        <Link href="/#records">View closed trades</Link> stays unconnected until a file is published.
       </p>
-      <h2>怎样才算一条已平仓</h2>
+      <h2>What counts as closed</h2>
       <ul>
-        <li>同一笔持仓的开仓量，被一笔或多笔平仓量结清。</li>
-        <li>多笔部分平仓在结清后合并成一条，净盈亏把价格盈亏、佣金和库存费加总。</li>
-        <li>还有剩余手数的，不进入表格，也不算进胜率。</li>
-        <li>反向开仓 inout 这套格式不支持，整笔排除，而不是猜哪一部分是平仓。</li>
-        <li>余额变动是出入金。信用额调整忽略。两者都不是交易盈亏。</li>
+        <li>Opened volume on one position is matched by one or more closing volumes.</li>
+        <li>Several partial closes become one row after the position is flat. Net P&amp;L adds price result, commission, and swap.</li>
+        <li>A remainder that is still open is omitted from the table and from the win rate.</li>
+        <li>A reversing in/out deal is outside this format. The whole position is dropped instead of guessing which part closed.</li>
+        <li>Balance deals are cash flows. Credit adjustments are ignored. Neither is trade P&amp;L.</li>
       </ul>
-      <h2>公开和本地不是一回事</h2>
+      <h2>Public and local are different</h2>
       <p>
-        只读导出写到你自己的电脑，并带上“仅本地”标记。网站拒绝展示仍带这个标记的文件。确认没有登录号、服务器和未平仓之后，才由你手动放进公开数据文件。
-        <Link href="/tools/#journal"> 导入本地日记 </Link>
-        不会完成这一步，数据停在这台浏览器里。
+        The read-only exporter writes a file on your computer and marks it local-only. The site refuses to display a file that still has that mark. After you confirm it has no login, server, or open positions, you copy it into the public data file yourself.{" "}
+        <Link href="/tools/#journal">Importing a local journal</Link> does not do that step. The rows stay in this browser.
       </p>
-      <h2>现在没有的东西</h2>
+      <h2>What is absent</h2>
       <p>
-        没有实时或延迟报价，没有持仓推送，也没有代你连接终端的网页按钮。权益曲线不会用成交编出来。若以后的持续分析要收费，入口在
-        <Link href="/pricing/"> 价格 </Link>
-        ，而且现在还不能购买。
+        There is no live or delayed quote, no open-position feed, and no button on the page that attaches to a terminal. An equity curve is not invented from deals. If later analysis is priced, the place to read that is{" "}
+        <Link href="/pricing/">pricing</Link>, and it cannot be bought now.
       </p>
     </GuideArticle>
   );

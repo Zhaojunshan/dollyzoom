@@ -4,31 +4,31 @@ import { LegalDocument } from "@/components/LegalDocument";
 import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "隐私说明",
-  description: "交易观察如何处理公开静态文件和浏览器本地日记。本站不收集账号密码，也没有注册或联系表单。",
+  title: "Privacy",
+  description: "How Trade Journal handles a public static file and a browser-local journal. No account passwords, no signup, and no contact form.",
   alternates: { canonical: "/privacy/" },
 };
 
 export default function PrivacyPage() {
   return (
-    <LegalDocument title="隐私说明" updated="2026-11-24">
-      <p>本说明适用于 {SITE_URL}。</p>
-      <h2>公开静态文件</h2>
+    <LegalDocument title="Privacy" updated="November 24, 2026">
+      <p>This note applies to {SITE_URL}.</p>
+      <h2>The public static file</h2>
       <p>
-        概览读取网站上的 performance.json。那是一份人工放上去的静态文件，不是实时账户接口。它应当只包含已平仓统计、你批准的时点余额或权益，以及货币、时区和 as-of。它不应该包含账号、密码、服务器、会话或未平仓明细。
+        The overview reads performance.json on the site. That file is placed there by hand. It is not a live account connection. It should contain closed-trade statistics, any point balance or equity you chose to include, plus currency, time zone, and an as-of time. It should not contain an account number, password, server, session, or open-position detail.
       </p>
-      <h2>我们不通过这个网站收集的内容</h2>
-      <p>没有注册，没有通讯订阅，也没有联系表单。仓位计算和日记导入不会把文件发到我们的服务器。我们也不在页面里放置支付密钥或个人邮箱。</p>
-      <h2>浏览器本地存储</h2>
+      <h2>What this website does not collect</h2>
+      <p>There is no signup, no mailing list, and no contact form. The position calculator and a journal import do not send the file to a server we operate. The pages do not contain a payment key or a personal email address.</p>
+      <h2>Storage in the browser</h2>
       <p>
-        两个开关会写在你的浏览器里：是否正在查看虚构示例，以及本地日记。它们留在这台设备上。你可以用工具页的清除按钮或浏览器的站点数据设置删掉它们。
+        Two values can be written in your browser: whether the fictional sample is open, and the local journal. They stay on that device. The clear button on the tools page, or the browser’s site-data control, removes them.
       </p>
-      <h2>托管</h2>
+      <h2>Hosting</h2>
       <p>
-        页面是静态文件，由 GitHub Pages 提供。浏览器向这个域名请求 HTML、脚本和 JSON 时，托管方会按它自己的政策处理连接日志。本站没有另建账户数据库。
+        The pages are static files served by GitHub Pages. When a browser requests HTML, scripts, or JSON from this domain, the host handles connection logs under its own policy. This site does not keep a separate account database.
       </p>
-      <h2>示例数据</h2>
-      <p>示例文件是虚构的，用来展示界面。打开示例不会把你的终端或日记上传出去。</p>
+      <h2>Sample data</h2>
+      <p>The sample file is fictional and shows the interface. Opening it does not upload your terminal or your journal.</p>
     </LegalDocument>
   );
 }

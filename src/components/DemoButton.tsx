@@ -14,7 +14,7 @@ export function DemoButton({ className = "" }: { className?: string }) {
         document.getElementById("records")?.scrollIntoView({ behavior: "smooth" });
       }}
     >
-      查看示例
+      View sample
     </button>
   );
 }

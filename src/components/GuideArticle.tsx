@@ -1,9 +1,9 @@
 import Link from "next/link";
 
 const links = [
-  { href: "/guide/position-size/", label: "仓位和 tick" },
-  { href: "/guide/drawdown/", label: "回撤和收益" },
-  { href: "/guide/mt5-journal/", label: "MT5 日记" },
+  { href: "/guide/position-size/", label: "Position size" },
+  { href: "/guide/drawdown/", label: "Drawdown" },
+  { href: "/guide/mt5-journal/", label: "MT5 journal" },
 ];
 
 export function GuideArticle({
@@ -22,17 +22,17 @@ export function GuideArticle({
       <div className="mt-6 space-y-4 text-sm leading-7 text-foreground [&_a]:text-accent [&_a]:underline [&_a]:underline-offset-4 [&_h2]:pt-3 [&_h2]:text-lg [&_h2]:font-semibold [&_li]:mt-1 [&_ul]:list-disc [&_ul]:pl-5">
         {children}
       </div>
-      <nav aria-label="相关说明" className="mt-8 flex flex-wrap gap-2 text-sm">
+      <nav aria-label="Related notes" className="mt-8 flex flex-wrap gap-2 text-sm">
         {links.map((link) => (
           <Link key={link.href} href={link.href} className="rounded-full border border-card-border px-3 py-1.5 hover:bg-accent-soft">
             {link.label}
           </Link>
         ))}
         <Link href="/tools/#size" className="rounded-full border border-card-border px-3 py-1.5 hover:bg-accent-soft">
-          免费使用仓位计算
+          Use the free position calculator
         </Link>
         <Link href="/pricing/" className="rounded-full border border-card-border px-3 py-1.5 hover:bg-accent-soft">
-          价格
+          Pricing
         </Link>
       </nav>
     </main>
